@@ -642,18 +642,22 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .ai-input-side { display: flex; flex-direction: column; gap: 7px; }
 .ai-target { font-size: 12px; }
 
-.layout-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+/* min(150px, 100%)：容器窄于 150px 时改用容器宽度，避免 grid 轨道被 min 值撑破 */
+.layout-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 10px; }
 .layout-opt {
   border: 1px solid var(--rule); background: var(--tint-soft); color: var(--fg-dim);
   padding: 12px 11px; cursor: pointer; text-align: left; font-family: var(--font-ui);
   transition: all var(--t-direct) var(--ease);
+  min-width: 0;   /* grid item 不撑破轨道 */
 }
 .layout-opt:hover { border-color: var(--rule-strong); color: var(--fg); }
 .layout-opt.is-active { border-color: var(--signal); color: var(--signal); background: var(--signal-tint-strong); }
 .layout-opt strong { display: block; font-size: 13px; margin-bottom: 3px; }
 .layout-opt small { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); letter-spacing: 0.06em; }
-.layout-opt .layout-preview { height: 42px; margin-top: 9px; border: 1px solid var(--rule); display: flex; gap: 3px; padding: 4px; }
-.layout-opt .layout-preview i { background: var(--rule-strong); display: block; }
+/* flex-wrap 关键：timeline 预览由 3 条 100% 宽的横线组成，
+   横向排列会溢出边框（实测超出 246px）。允许换行后自动堆成 3 行，正好呈现时间轴形态。 */
+.layout-opt .layout-preview { height: 42px; margin-top: 9px; border: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 3px; padding: 4px; overflow: hidden; }
+.layout-opt .layout-preview i { background: var(--rule-strong); display: block; min-width: 0; }
 .layout-opt .layout-preview i.sig { background: var(--signal-dim); }
 
 .analysis-block { margin-bottom: 16px; }
