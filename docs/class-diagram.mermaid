@@ -1,0 +1,94 @@
+classDiagram
+    class Profile {
+        +int id
+        +str name
+        +str headline
+        +str email
+        +str phone
+        +str location
+        +str summary
+        +list links
+        +list education
+        +list experiences
+        +list projects
+        +list skills
+        +list certificates
+        +list languages
+        +list awards
+        +dict extra
+        +datetime created_at
+        +datetime updated_at
+    }
+
+    class Chat {
+        +int id
+        +str title
+        +str status
+        +str stage
+        +int progress
+        +str error
+        +int attempts
+        +int max_retries
+        +str raw_text
+        +str source
+        +str source_url
+        +dict profile_snapshot
+        +bool profile_dirty
+        +dict job_analysis
+        +datetime created_at
+        +datetime updated_at
+        +datetime started_at
+        +datetime finished_at
+    }
+
+    class ChatMessage {
+        +int id
+        +int chat_id
+        +str role
+        +str kind
+        +str content
+        +dict meta
+        +datetime created_at
+    }
+
+    class Resume {
+        +int id
+        +int chat_id
+        +str title
+        +str theme
+        +str html
+        +dict spec
+        +dict coverage
+        +int version
+        +datetime created_at
+        +datetime updated_at
+    }
+
+    class EditLog {
+        +int id
+        +int resume_id
+        +str instruction
+        +str scope
+        +str target
+        +bool ok
+        +str error
+        +str before_html
+        +str after_html
+        +datetime created_at
+    }
+
+    class CoverageItem {
+        +str req_id
+        +str requirement
+        +str section
+        +str resume_evidence
+        +str source
+        +str evidence_ref
+        +str note
+    }
+
+    Profile "1" ..> "0..*" Chat : snapshot copied into
+    Chat "1" *-- "0..*" ChatMessage : contains
+    Chat "1" --> "0..1" Resume : produces
+    Resume "1" *-- "0..*" EditLog : edited by
+    Resume "1" o-- "0..*" CoverageItem : coverage

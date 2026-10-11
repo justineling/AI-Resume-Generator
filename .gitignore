@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行时数据
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/server.log
+backend/tests/shots/
+
+# 配置与密钥
+.env
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

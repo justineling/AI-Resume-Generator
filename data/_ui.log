@@ -1,0 +1,75 @@
+INFO:     Started server process [11724]
+INFO:     Waiting for application startup.
+2026-10-11 14:08:36,828 INFO resume.scheduler: 调度器已启动，worker=3
+2026-10-11 14:08:36,828 INFO resume: AI Resume Generator 就绪 -> http://127.0.0.1:8000
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55014 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56602 - "GET /static/css/app.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60271 - "GET /static/js/app.js?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56602 - "GET /static/js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60271 - "GET /static/js/ui.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53069 - "GET /static/js/profile.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53127 - "GET /static/js/chat.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /static/js/resume.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/settings/llm HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 62948) - "WebSocket /ws/tasks" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56298 - "GET /api/settings/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "PUT /api/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "POST /api/chats HTTP/1.1" 201 Created
+INFO:     127.0.0.1:56298 - "GET /api/chats/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "PATCH /api/chats/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "POST /api/chats/1/messages HTTP/1.1" 201 Created
+2026-10-11 14:09:37,318 INFO resume.scheduler: chat 1 完成 -> resume 1
+INFO:     127.0.0.1:56298 - "POST /api/chats/1/generate HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:53127 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/chats/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes/1/edits HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "POST /api/resumes/1/ai-edit HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes/1/edits HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56298 - "GET /api/settings/llm HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:60138 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60138 - "PUT /api/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49258 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49254 - "GET /static/css/app.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53815 - "GET /static/js/app.js?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53815 - "GET /static/js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49254 - "GET /static/js/ui.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /static/js/profile.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57336 - "GET /static/js/chat.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64826 - "GET /static/js/resume.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/profile HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 56676) - "WebSocket /ws/tasks" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:63462 - "GET /api/settings/llm HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/settings/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/chats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "POST /api/chats HTTP/1.1" 201 Created
+INFO:     127.0.0.1:63462 - "GET /api/chats/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/chats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/chats/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "PATCH /api/chats/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "POST /api/chats/2/messages HTTP/1.1" 201 Created
+2026-10-11 14:10:19,628 INFO resume.scheduler: chat 2 完成 -> resume 2
+INFO:     127.0.0.1:63462 - "POST /api/chats/2/generate HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64826 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/chats/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/resumes/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/chats/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/resumes/2/edits HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/resumes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63462 - "GET /api/settings/llm HTTP/1.1" 200 OK
+INFO:     connection closed

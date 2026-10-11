@@ -1,0 +1,59 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant F as chat.js (前端)
+    participant API as routers/chats.py
+    participant S as scheduler
+    participant P as pipeline.run_chat
+    participant LLM as llm/mock
+    participant DB as SQLite
+    participant WS as events.hub
+
+    Note over U,DB: 阶段一：新建 chat（快照全局资料）
+    U->>F: 点「新建对话」
+    F->>API: POST /api/chats
+    API->>DB: 读全局 Profile → 深拷贝为 Chat.profile_snapshot
+    API->>DB: INSERT Chat(status=draft)
+    API-->>F: ChatOut
+    F->>F: 渲染空对话区 + 资料条
+
+    Note over U,DB: 阶段二：贴 JD
+    U->>F: 粘贴岗位要求 → 发送
+    F->>API: POST /api/chats/{id}/messages {kind:jd}
+    API->>DB: INSERT ChatMessage(jd) + 更新 Chat.raw_text
+    API->>WS: broadcast chat_message
+    WS-->>F: chat_message
+    F->>F: 追加 user 气泡
+
+    Note over U,DB: 阶段三：生成（可选：先编辑 chat 内资料快照）
+    U->>F: 点「生成简历」
+    F->>API: POST /api/chats/{id}/generate
+    API->>API: 校验(有JD、未运行)
+    API->>S: enqueue(chat_id)
+    API-->>F: 202 ChatOut(queued)
+    S->>DB: 条件 UPDATE 抢占 → running
+    S->>WS: broadcast chat_updated(running)
+    S->>P: run_chat(chat_id)
+
+    P->>DB: 载入 profile_snapshot + raw_text
+    P->>WS: chat_progress 10%
+    P->>LLM: 岗位解析（分节 + requirements + employer_questions）
+    LLM-->>P: analysis
+    P->>DB: 存 Chat.job_analysis
+    P->>WS: chat_progress 25%
+    P->>LLM: 生成 spec + coverage（覆盖全部需求/标注依据）
+    LLM-->>P: spec + coverage
+    P->>WS: chat_progress 60%
+    P->>P: render_resume_html(spec)
+    P->>DB: INSERT Resume(chat_id, html, spec, coverage)
+    P->>DB: Chat.status=succeeded
+    P->>WS: chat_progress 100% + chat_updated + chat_message(notice)
+    WS-->>F: 事件
+    F->>F: 显示「查看简历 / 查看覆盖清单」
+
+    Note over U,DB: 阶段四：查看产出
+    U->>F: 点「查看简历」
+    F->>API: GET /api/resumes/{resume_id}
+    API-->>F: ResumeOut(html, spec, coverage)
+    F->>F: switchView("resume") → resume.js 工作台
+    F->>F: 匹配分析 tab 渲染覆盖清单(grounded/capability)

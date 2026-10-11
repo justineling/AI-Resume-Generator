@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="moderate">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>AI RESUME GENERATOR / 岗位定制简历</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/css/app.css?v=3" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主内容</a>
+
+  <div class="shell">
+    <!-- ================= 顶栏 ================= -->
+    <header class="topbar">
+      <div class="wordmark">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="wordmark-text">
+          <strong>AI RESUME</strong>
+          <small>GENERATOR / 01</small>
+        </span>
+      </div>
+
+      <p class="top-status" id="llm-status" aria-live="polite">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="top-status-text">LLM // 检测中</span>
+      </p>
+
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" type="button" id="btn-refresh" title="刷新数据">刷新</button>
+        <button class="btn btn-ghost" type="button" id="btn-settings">设置</button>
+      </div>
+    </header>
+
+    <!-- ================= 侧栏导航 ================= -->
+    <nav class="rail" aria-label="主导航">
+      <button class="rail-item" type="button" data-view="profile">
+        <span class="rail-idx">01</span><span class="rail-label">资料</span>
+      </button>
+      <button class="rail-item is-active" type="button" data-view="workspace" aria-current="page">
+        <span class="rail-idx">02</span><span class="rail-label">工作区</span>
+        <span class="rail-badge" id="rail-badge-chats" hidden>0</span>
+      </button>
+      <button class="rail-item" type="button" data-view="resume">
+        <span class="rail-idx">03</span><span class="rail-label">简历</span>
+      </button>
+      <div class="rail-code" aria-hidden="true">GEN<br />01<br />v1.0</div>
+    </nav>
+
+    <!-- ================= 主内容 ================= -->
+    <main id="main" class="main">
+
+      <!-- ---------- 01 资料 ---------- -->
+      <section class="view" data-view="profile">
+        <header class="view-head">
+          <p class="kicker">MATERIAL LIBRARY / 01</p>
+          <h1 class="view-title">资料库<span class="view-title-en">PROFILE</span></h1>
+          <p class="view-lede">这里的资料是简历的"素材库"。模型只会从你填写的内容里取材，不会凭空编造学历、公司与数字。</p>
+          <span class="title-rule" aria-hidden="true"></span>
+        </header>
+
+        <div class="panel-grid">
+          <div class="panel panel-span2">
+            <div class="panel-head"><span class="panel-code">PF-01 / IDENTITY</span><h2>基本资料</h2></div>
+            <div class="field-grid">
+              <label class="field"><span>姓名</span><input id="pf-name" type="text" placeholder="张三" /></label>
+              <label class="field"><span>一句话定位</span><input id="pf-headline" type="text" placeholder="5 年后端工程师" /></label>
+              <label class="field"><span>邮箱</span><input id="pf-email" type="text" placeholder="you@example.com" /></label>
+              <label class="field"><span>电话</span><input id="pf-phone" type="text" placeholder="13800000000" /></label>
+              <label class="field"><span>所在城市</span><input id="pf-location" type="text" placeholder="上海" /></label>
+              <label class="field"><span>年龄</span><input id="pf-age" type="number" min="0" max="99" placeholder="28" /></label>
+            </div>
+            <label class="field field-block"><span>个人简介</span>
+              <textarea id="pf-summary" rows="3" placeholder="用 2-3 句话概括你的核心竞争力。"></textarea>
+            </label>
+            <div class="avatar-row">
+              <div class="avatar-preview" id="avatar-preview" aria-hidden="true"><span>无头像</span></div>
+              <div>
+                <label class="btn btn-ghost btn-file">
+                  上传头像
+                  <input type="file" id="pf-avatar-file" accept="image/*" hidden />
+                </label>
+                <button class="btn btn-ghost" type="button" id="btn-avatar-clear">清除</button>
+                <p class="hint">头像会以 data-url 内嵌进简历 HTML，导出时不依赖外部文件。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><span class="panel-code">PF-02 / LINKS</span><h2>链接</h2></div>
+            <div class="repeater" id="rep-links"></div>
+            <button class="btn btn-add" type="button" data-add="links">＋ 添加链接</button>
+          </div>
+
+          <div class="panel panel-span2">
+            <div class="panel-head"><span class="panel-code">PF-03 / EXPERIENCE</span><h2>工作经历</h2></div>
+            <div class="repeater" id="rep-experiences"></div>
+            <button class="btn btn-add" type="button" data-add="experiences">＋ 添加工作经历</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><span class="panel-code">PF-04 / SKILLS</span><h2>专业技能</h2></div>
+            <div class="repeater" id="rep-skills"></div>
+            <button class="btn btn-add" type="button" data-add="skills">＋ 添加技能</button>
+          </div>
+
+          <div class="panel panel-span2">
+            <div class="panel-head"><span class="panel-code">PF-05 / PROJECTS</span><h2>项目经历</h2></div>
+            <div class="repeater" id="rep-projects"></div>
+            <button class="btn btn-add" type="button" data-add="projects">＋ 添加项目</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><span class="panel-code">PF-06 / EDUCATION</span><h2>教育背景</h2></div>
+            <div class="repeater" id="rep-education"></div>
+            <button class="btn btn-add" type="button" data-add="education">＋ 添加学历</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><span class="panel-code">PF-07 / EXTRAS</span><h2>证书 / 荣誉 / 语言</h2></div>
+            <div class="repeater" id="rep-certificates"></div>
+            <button class="btn btn-add" type="button" data-add="certificates">＋ 添加证书</button>
+            <div class="repeater" id="rep-awards" style="margin-top:10px"></div>
+            <button class="btn btn-add" type="button" data-add="awards">＋ 添加荣誉</button>
+            <div class="repeater" id="rep-languages" style="margin-top:10px"></div>
+            <button class="btn btn-add" type="button" data-add="languages">＋ 添加语言</button>
+          </div>
+        </div>
+
+        <div class="action-bar">
+          <button class="btn btn-primary" type="button" id="btn-save-profile">保存资料</button>
+          <span class="save-state" id="profile-state" aria-live="polite"></span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" type="button" id="btn-export-profile">导出 JSON</button>
+          <label class="btn btn-ghost btn-file">导入 JSON<input type="file" id="pf-import-file" accept="application/json" hidden /></label>
+        </div>
+      </section>
+
+      <!-- ---------- 02 工作区 ---------- -->
+      <section class="view is-active" data-view="workspace">
+        <header class="view-head">
+          <p class="kicker">WORKSPACE / 02</p>
+          <h1 class="view-title">对话工作区<span class="view-title-en">CHAT</span></h1>
+          <p class="view-lede">一个对话 = 一个岗位场景 = 恰好一份简历。把岗位要求（JD）贴进对话，系统会先分节解析、再据此生成定制简历；每个对话会记住自己用的资料，可以单独微调，不会影响「资料」页里的总档案。</p>
+          <span class="title-rule" aria-hidden="true"></span>
+        </header>
+
+        <button class="ws-list-toggle" type="button" id="btn-toggle-chats" aria-expanded="false"
+                aria-controls="chat-list">对话列表 / SESSIONS</button>
+
+        <div class="workspace" id="workspace">
+          <aside class="ws-list">
+            <div class="panel-head">
+              <span class="panel-code">CH-00 / SESSIONS</span><h2>对话</h2>
+              <span class="spacer"></span>
+              <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
+            </div>
+            <div class="chat-list" id="chat-list"><p class="empty">暂无对话，点「＋ 新建」开始。</p></div>
+          </aside>
+
+          <div class="ws-pane" id="ws-pane">
+            <div class="ws-empty" id="ws-empty">
+              <p class="empty-title">还没有打开任何对话</p>
+              <p class="empty-desc">一个对话 = 一个岗位场景 = 恰好一份简历。新建后填写「职位名称」与「岗位要求」，即可生成针对性简历。</p>
+              <button class="btn btn-primary" type="button" id="btn-empty-new-chat">＋ 新建对话</button>
+            </div>
+
+            <div class="ws-work" id="ws-work" hidden>
+              <header class="ws-head">
+                <div class="ws-head-main">
+                  <span class="ws-code" id="ws-code">CHAT-0000</span>
+                  <strong class="ws-title" id="ws-title">—</strong>
+                </div>
+                <span class="status-chip" id="ws-status" data-status="draft">草稿</span>
+                <div class="ws-head-actions">
+                  <button class="btn btn-ghost" type="button" id="btn-chat-open-resume" hidden>打开简历</button>
+                  <button class="btn btn-ghost btn-danger" type="button" id="btn-chat-delete">删除</button>
+                </div>
+              </header>
+
+              <div class="ws-profile" id="ws-profile">
+                <span class="ws-profile-label">本对话的资料</span>
+                <span class="ws-profile-name" id="ws-profile-name">—</span>
+                <span class="ws-profile-badge" id="ws-profile-badge" hidden>已单独调整</span>
+                <span class="spacer"></span>
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-chat-profile-edit">编辑资料</button>
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-chat-profile-reset">恢复默认</button>
+              </div>
+
+              <div class="ws-progress" id="ws-progress" hidden role="status" aria-live="polite">
+                <div class="progress-track"><div class="progress-fill" id="ws-progress-fill" style="width:0%"></div></div>
+                <p class="ws-stage" id="ws-stage">—</p>
+              </div>
+
+              <div class="ws-stream" id="ws-stream"></div>
+
+              <details class="ws-eq" id="ws-eq" hidden>
+                <summary>雇主可能问到的问题 / EMPLOYER QUESTIONS <span class="count-chip" id="ws-eq-count">0</span></summary>
+                <ul id="ws-eq-list"></ul>
+              </details>
+
+              <div class="ws-composer">
+                <div class="ws-composer-fields">
+                  <label class="field">
+                    <span>职位名称 / JOB TITLE</span>
+                    <input id="ws-title-input" type="text" autocomplete="off" spellcheck="false"
+                           placeholder="例如：Senior Frontend Engineer" />
+                  </label>
+                  <label class="field">
+                    <span>岗位要求 / JOB REQUIREMENTS</span>
+                    <textarea id="ws-input" rows="4"
+                              placeholder="粘贴 Responsibilities / Requirements 等原文…"></textarea>
+                  </label>
+                </div>
+                <div class="ws-composer-side">
+                  <button class="btn btn-primary" type="button" id="btn-chat-generate">生成简历</button>
+                  <button class="btn btn-ghost" type="button" id="btn-chat-cancel" hidden>取消生成</button>
+                  <button class="btn btn-ghost" type="button" id="btn-chat-retry" hidden>重试</button>
+                  <p class="composer-status" id="ws-composer-status" role="status" aria-live="polite"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 03 简历 ---------- -->
+      <section class="view" data-view="resume">
+        <header class="view-head">
+          <p class="kicker">RESUME STUDIO / 03</p>
+          <h1 class="view-title">简历工作台<span class="view-title-en">STUDIO</span></h1>
+          <p class="view-lede">所见即所得编辑、直接改 HTML 源码、让 AI 按自然语言二次修改，最后打印或下载为 PDF。</p>
+          <span class="title-rule" aria-hidden="true"></span>
+        </header>
+
+        <div class="studio">
+          <aside class="studio-list">
+            <div class="panel-head"><span class="panel-code">RS-00 / ARCHIVE</span><h2>简历列表</h2></div>
+            <div class="resume-list" id="resume-list"><p class="empty">暂无简历</p></div>
+          </aside>
+
+          <div class="studio-work" id="studio-work" hidden>
+            <div class="studio-toolbar">
+              <div class="studio-title">
+                <strong id="rs-title">—</strong>
+                <span class="meta" id="rs-meta"></span>
+              </div>
+              <div class="tabs" role="tablist" aria-label="编辑模式">
+                <button class="tab is-active" type="button" data-tab="wysiwyg" role="tab" aria-selected="true">所见即所得</button>
+                <button class="tab" type="button" data-tab="source" role="tab" aria-selected="false">HTML 源码</button>
+                <button class="tab" type="button" data-tab="ai" role="tab" aria-selected="false">AI 修改</button>
+                <button class="tab" type="button" data-tab="layout" role="tab" aria-selected="false">版式</button>
+                <button class="tab" type="button" data-tab="analysis" role="tab" aria-selected="false">匹配分析</button>
+              </div>
+              <div class="studio-actions">
+                <button class="btn btn-ghost" type="button" id="btn-save-resume" disabled>保存</button>
+                <button class="btn btn-primary" type="button" id="btn-print">打印 / PDF</button>
+                <button class="btn btn-ghost" type="button" id="btn-download">下载 HTML</button>
+                <button class="btn btn-ghost btn-danger" type="button" id="btn-delete-resume">删除</button>
+              </div>
+            </div>
+
+            <div class="studio-body">
+              <div class="tabpanel is-active" data-panel="wysiwyg">
+                <div class="wysiwyg-bar">
+                  <span class="hint">直接在下方文档里点击修改文字与顺序。</span>
+                  <span class="spacer"></span>
+                  <span class="edit-state" id="edit-state">已同步</span>
+                </div>
+                <iframe id="editor-frame" class="editor-frame" title="简历所见即所得编辑区"></iframe>
+              </div>
+
+              <div class="tabpanel" data-panel="source">
+                <p class="hint">直接编辑 HTML 源码。保存后与所见即所得视图同步。</p>
+                <textarea id="source-area" class="code-area code-area-tall" spellcheck="false"></textarea>
+                <div class="action-bar">
+                  <button class="btn btn-ghost" type="button" id="btn-apply-source">应用到编辑器</button>
+                </div>
+              </div>
+
+              <div class="tabpanel" data-panel="ai">
+                <div class="ai-chat" id="ai-chat">
+                  <div class="ai-bubble ai-bubble-sys">用自然语言告诉模型怎么改，例如「把工作经历里的第三条改得更量化」「把技能章节移到最前面」「整体语气更简洁」。修改会立即反映到编辑器。</div>
+                </div>
+                <div class="ai-input">
+                  <textarea id="ai-instruction" rows="2" placeholder="描述你想要的修改…"></textarea>
+                  <div class="ai-input-side">
+                    <label class="field-inline">范围
+                      <select id="ai-scope">
+                        <option value="whole">整份简历</option>
+                        <option value="section">指定章节</option>
+                      </select>
+                    </label>
+                    <input id="ai-target" class="ai-target" type="text" placeholder="section id（可选）" />
+                    <button class="btn btn-primary" type="button" id="btn-ai-run">执行修改</button>
+                    <button class="btn btn-ghost" type="button" id="btn-ai-undo">回退上一版</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tabpanel" data-panel="layout">
+                <p class="hint">版式由模型按岗位特征决定。你也可以在这里手动覆盖，系统会基于结构快照重新渲染，不消耗 LLM 调用。</p>
+                <div class="layout-grid" id="layout-grid"></div>
+                <div class="action-bar">
+                  <button class="btn btn-primary" type="button" id="btn-apply-layout">应用版式</button>
+                </div>
+              </div>
+
+              <div class="tabpanel" data-panel="analysis">
+                <div id="analysis-body"><p class="empty">该简历没有匹配分析数据。</p></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="studio-placeholder" id="studio-placeholder">
+            <p class="empty-title">还没有打开简历</p>
+            <p class="empty-desc">简历在工作区生成。生成完成后点「打开简历」即可在这里编辑、调整版式并导出 PDF。</p>
+            <button class="btn btn-primary" type="button" id="btn-studio-goto-workspace">去工作区生成</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>AI RESUME GENERATOR — 本地运行 / 数据不出本机</p>
+      <p id="footer-mode">LLM: —</p>
+    </footer>
+  </div>
+
+  <!-- ================= 设置弹窗 ================= -->
+  <dialog id="settings-dialog" class="dialog dialog-wide">
+    <form method="dialog" class="dialog-form" id="settings-form">
+      <header class="dialog-head">
+        <span class="panel-code">CFG-01 / LLM</span>
+        <h2>模型设置</h2>
+      </header>
+      <p class="hint">选择供应商 → 填 API Key → 点「测试连接」→ 选模型。留空 API Key 则使用本地降级模式（启发式规则），功能完整但不调用大模型。</p>
+      <div class="field-grid">
+        <label class="field field-span2">
+          <span>供应商 / Provider</span>
+          <select id="cfg-provider" aria-label="供应商"></select>
+        </label>
+        <div class="field field-span2" id="cfg-base-field">
+          <span class="field-label">Base URL <a class="link" id="cfg-docs" href="#" target="_blank" rel="noopener noreferrer" hidden>文档 ↗</a></span>
+          <input id="cfg-base" type="text" inputmode="url" autocomplete="off" spellcheck="false" readonly aria-label="Base URL" aria-describedby="cfg-note" />
+        </div>
+        <div class="field field-span2">
+          <span>API Key</span>
+          <p class="key-status" id="cfg-key-status" role="status" aria-live="polite"></p>
+          <div class="key-row">
+            <input id="cfg-key" type="password" autocomplete="off" placeholder="已配置时留空即可，无需重复输入" aria-label="API Key" />
+            <button class="btn btn-ghost" type="button" id="btn-test">测试连接</button>
+          </div>
+          <p class="test-result" id="cfg-test-result" role="status" aria-live="polite"></p>
+          <p class="hint" id="cfg-key-help"></p>
+        </div>
+        <label class="field field-span2">
+          <span>模型</span>
+          <select id="cfg-model-select" aria-label="模型"></select>
+        </label>
+        <label class="field field-span2" id="cfg-model-custom-field" hidden>
+          <span>自定义模型名</span>
+          <input id="cfg-model-custom" type="text" autocomplete="off" spellcheck="false" placeholder="如 deepseek-chat" />
+        </label>
+        <p class="provider-note field-span2" id="cfg-note"></p>
+        <label class="field"><span>最大输出 token</span>
+          <input id="cfg-max-tokens" type="number" min="0" step="1" inputmode="numeric" aria-describedby="cfg-max-tokens-hint" />
+          <small class="field-hint" id="cfg-max-tokens-hint">0 = 不限制（由模型服务端决定），默认 0</small>
+        </label>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-primary" type="button" id="btn-save-settings">保存设置</button>
+        <button class="btn btn-ghost" type="button" id="btn-close-settings">关闭</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================= 对话资料快照弹窗 ================= -->
+  <dialog id="chat-profile-dialog" class="dialog">
+    <form method="dialog" class="dialog-form" id="chat-profile-form">
+      <header class="dialog-head">
+        <span class="panel-code">CH-01 / SNAPSHOT</span>
+        <h2>本对话的资料</h2>
+      </header>
+      <p class="hint">在这里的修改只对当前对话生效，「资料」页里的总档案不受影响。生成简历时以这里的内容为准。</p>
+      <div class="field-grid">
+        <label class="field"><span>姓名</span><input id="cps-name" type="text" placeholder="张三" /></label>
+        <label class="field"><span>一句话定位</span><input id="cps-headline" type="text" placeholder="5 年后端工程师" /></label>
+        <label class="field field-span2"><span>个人简介</span><textarea id="cps-summary" rows="3" placeholder="用 2-3 句话概括核心竞争力。"></textarea></label>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-primary" type="button" id="btn-chat-profile-save">保存修改</button>
+        <button class="btn btn-ghost" type="button" id="btn-chat-profile-close">关闭</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script type="module" src="/static/js/app.js?v=3"></script>
+</body>
+</html>
