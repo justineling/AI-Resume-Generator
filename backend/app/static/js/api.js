@@ -67,6 +67,8 @@ export const api = {
   // 设置
   getLLMSettings: () => api.get("/api/settings/llm"),
   saveLLMSettings: (s) => api.put("/api/settings/llm", s),
+  importFromUrl: (url, autoGenerate) =>
+    api.post("/api/chats/import-url", { url, auto_generate: !!autoGenerate }),
   getProviders: () => api.get("/api/settings/providers"),
   testLLM: (payload) => api.post("/api/settings/llm/test", payload),
 };

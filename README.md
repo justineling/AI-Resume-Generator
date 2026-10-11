@@ -321,6 +321,7 @@ enqueue(chat_id) ──► asyncio.Queue ──► worker #0 ─┐
 | GET | `/api/health` | 健康检查（返回运行时配置：`llm_enabled`） |
 | GET / PUT | `/api/profile` | 读取 / 保存**全局**资料库 |
 | POST | `/api/chats` | 新建对话（创建时快照全局资料） |
+| POST | `/api/chats/import-url` | 粘贴招聘页面链接，自动抓取并识别职位名称与岗位要求，创建已填好的新对话；`{url, auto_generate?}`，`auto_generate=true` 时导入后自动生成。仅支持 http(s)；抓取超时 20s，正文截断 2 万字符 |
 | GET | `/api/chats` | 对话列表（含派生的 `resume_id`） |
 | GET | `/api/chats/{id}` | 对话详情 + 消息列表 |
 | PATCH | `/api/chats/{id}` | 改标题 |
@@ -532,6 +533,8 @@ iframe 天然做了样式隔离，同时保留了浏览器原生的编辑能力�
 ---
 
 ## 13. 已知限制
+
+- **URL 导入是静态抓取**：不执行页面 JS，由前端脚本动态渲染的招聘页（部分站点）可能抓不到内容，此时会提示改为手动复制；仅支持 http(s) 链接，抓取超时 20 秒。
 
 如实列出当前实现的边界，避免把能力说得比实际更强：
 

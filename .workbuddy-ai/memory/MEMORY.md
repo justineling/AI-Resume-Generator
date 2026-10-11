@@ -96,8 +96,38 @@
 
 ## `llm_max_tokens` 必须够大
 `SYSTEM_AI_EDIT` 要模型返回**整份简历 HTML**（约 9KB），4096 token 会被截断
-→ 表现为「无法解析 JSON」这种误导性报错。默认已提到 **8192**，并在 `llm.py` 里
-检测 `finish_reason == "length"` 抛可读的「输出被截断」错误。设置页可调，下界 256。
+→ 表现为「无法解析 JSON」这种误导性报错。**当前约定 `max_tokens <= 0` = 不限制**（请求体完全不发送该字段，由服务端决定），默认值 0；`llm.py` 仍保留 `finish_reason == "length"` 检测抛可读错误。设置页可调。
+**温度同理不发送**：请求体不含 temperature，由各家服务端默认值决定（用户明确不要暴露这两个参数）。
+**worker 数不暴露**：前端设置弹窗只有供应商/Base URL/Key/模型/max_tokens 五项。
+
+## API Key 已配置状态（前端必须醒目展示）
+设置弹窗有 `#cfg-key-status` 状态条：已配置显示「✓ API Key 已配置（脱敏）」，未配置显示降级模式提示。
+`POST /api/settings/llm/test` 未填 key 时**回落到已存储 key**（仅同供应商；custom 需 base_url 一致），
+用户无需重新输入即可测试连接。
+
+## 颜色模式（深色/浅色/跟随系统）
+- **新增颜色前必须同步两处**：`:root`（深色默认值）+ `:root[data-theme="light"]`（浅色覆盖）。
+  只在浅色块里定义、深色 `:root` 漏定义 → 深色下 var() 解析失败。检查缺失要按 `:root` 块边界内判断，
+  不能用 `if "--xxx:" not in s`（会被其他块的同类 token 骗过）。
+- **浅色下白色/青色叠加必须用 token**：所有 `rgba(255,255,255,*)`、`rgba(24,209,255,*)`、
+  状态色 alpha 都已 token 化（`--tint-*` / `--signal-tint*` / `--state-tint` / `--scrim` / `--grid-line` /
+  `--on-signal`），**新增样式禁止再写硬编码 alpha**，否则浅色下失效。
+- **浅色信号色必须加深**：深色 `#18d1ff` 在浅底对比仅 ~2.0；浅色用 `#0a7291`（对比 4.83）。
+- **主题持久化在 localStorage**（`arg.theme`：dark/light/auto），`index.html` `<head>` 早期脚本
+  在首帧前应用防闪烁；切换立即生效（change 事件），不走后端。
+- **简历文档不跟随主题**：renderer 保持白纸黑字（简历=纸张，与 PDF 导出一致）。
+
+## 招聘网页抓取（app/fetch.py）
+- **必须带完整浏览器头**：只带 `User-Agent` 会被 JobStreet 等站点判为爬虫返回 **403**；补齐 `Accept / sec-ch-ua / sec-fetch-* / 同源 Referer` 后实测 200。见 `fetch.BROWSER_HEADERS`。
+- `validate_url` 必须**先显式拒绝非 http(s) 协议**再补 `https://` 前缀，否则 `file://x` 会被盲加前缀放行。
+- 静态抓取不执行 JS；前端渲染的站点会提示改手动复制（已知限制，非缺陷）。
+- `fetch_url_text` / `extract_jd_from_text` 均为 **async**（`extract_jd_from_text` 内部 await `chat_json`）。
+  测试 mock 也必须是 async 函数；**协议校验用例不能 mock 掉 `fetch_url_text`**，否则绕过校验。
+
+## 响应式布局（踩过的坑）
+- `.panel-head` 一类横向排布必须加 `flex-wrap`，否则窄栏里按钮会溢出边框；按钮组应包进 `.head-actions{margin-left:auto; flex-wrap:wrap}`。
+- **改 `grid-template-areas` 时不能漏区域**：760 断点曾漏掉 `foot`，导致 `footer` 被隐式放置、撑出额外列宽（375px 下文档宽 491）。
+- 验证溢出要用按钮往上定位（`btn.parentElement.closest('.panel-head')`）——直接 `querySelector('.panel-head')` 可能命中隐藏视图中 rect 为 0 的元素，造成误判。
 
 ## 本机环境坑（重要）
 **本机设了 `http_proxy`，代理会拦截 localhost 请求并返回 502。**

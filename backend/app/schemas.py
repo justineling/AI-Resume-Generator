@@ -112,6 +112,8 @@ class ChatOut(BaseModel):
     job_analysis: dict[str, Any] = Field(default_factory=dict)
     # 派生的简历 id（左连 Resume），非存储字段；一 chat 至多一份简历
     resume_id: Optional[int] = None
+    # URL 导入时 LLM 抽取出的职位名称（可能与 title 相同；仅供前端提示用）
+    extracted_title: Optional[str] = None
     # 仅 GET /api/chats/{id} 填充；列表接口留空
     messages: list[ChatMessageOut] = Field(default_factory=list)
     created_at: datetime

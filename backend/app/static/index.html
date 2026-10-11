@@ -3,10 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="dark light" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=3" />
+  <link rel="stylesheet" href="/static/css/app.css?v=6" />
+  <script>
+    /* 在首帧之前套用已保存的颜色模式，避免先闪一下深色再切浅色 */
+    (function () {
+      try {
+        var mode = localStorage.getItem("arg.theme") || "dark";
+        var eff = mode === "auto"
+          ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+          : mode;
+        document.documentElement.setAttribute("data-theme", eff === "light" ? "light" : "dark");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主内容</a>
@@ -153,8 +167,24 @@
           <aside class="ws-list">
             <div class="panel-head">
               <span class="panel-code">CH-00 / SESSIONS</span><h2>对话</h2>
-              <span class="spacer"></span>
-              <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
+              <div class="head-actions">
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-import-url" title="粘贴招聘页面链接，自动抓取职位名称与要求">从链接导入</button>
+                <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
+              </div>
+            </div>
+            <div class="import-box" id="import-url-box" hidden>
+              <label class="field"><span>招聘页面链接</span>
+                <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                       placeholder="https://…/job/12345" aria-describedby="import-url-hint" />
+              </label>
+              <p class="hint" id="import-url-hint">将自动抓取网页并识别职位名称与岗位要求，填入一个新对话；导入后请核对内容再生成。</p>
+              <p class="test-result" id="import-url-status" role="status" aria-live="polite"></p>
+              <div class="action-bar">
+                <label class="check-inline"><input type="checkbox" id="import-auto-generate" /> 导入后自动生成简历</label>
+                <span class="spacer"></span>
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
+                <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">导入</button>
+              </div>
             </div>
             <div class="chat-list" id="chat-list"><p class="empty">暂无对话，点「＋ 新建」开始。</p></div>
           </aside>
@@ -162,8 +192,11 @@
           <div class="ws-pane" id="ws-pane">
             <div class="ws-empty" id="ws-empty">
               <p class="empty-title">还没有打开任何对话</p>
-              <p class="empty-desc">一个对话 = 一个岗位场景 = 恰好一份简历。新建后填写「职位名称」与「岗位要求」，即可生成针对性简历。</p>
-              <button class="btn btn-primary" type="button" id="btn-empty-new-chat">＋ 新建对话</button>
+              <p class="empty-desc">一个对话 = 一个岗位场景 = 恰好一份简历。新建后填写「职位名称」与「岗位要求」，即可生成针对性简历；也可以直接粘贴招聘页面链接自动导入。</p>
+              <div class="empty-actions">
+                <button class="btn btn-primary" type="button" id="btn-empty-new-chat">＋ 新建对话</button>
+                <button class="btn btn-ghost" type="button" id="btn-empty-import-url">从链接导入</button>
+              </div>
             </div>
 
             <div class="ws-work" id="ws-work" hidden>
@@ -364,6 +397,14 @@
           <input id="cfg-model-custom" type="text" autocomplete="off" spellcheck="false" placeholder="如 deepseek-chat" />
         </label>
         <p class="provider-note field-span2" id="cfg-note"></p>
+        <label class="field"><span>颜色模式</span>
+          <select id="cfg-theme" aria-label="颜色模式" aria-describedby="cfg-theme-hint">
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+            <option value="auto">跟随系统</option>
+          </select>
+          <small class="field-hint" id="cfg-theme-hint">浅色沿用同一套设计语言（方角、青色信号、1px 细线），仅替换配色</small>
+        </label>
         <label class="field"><span>最大输出 token</span>
           <input id="cfg-max-tokens" type="number" min="0" step="1" inputmode="numeric" aria-describedby="cfg-max-tokens-hint" />
           <small class="field-hint" id="cfg-max-tokens-hint">0 = 不限制（由模型服务端决定），默认 0</small>
@@ -398,6 +439,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/static/js/app.js?v=3"></script>
+  <script type="module" src="/static/js/app.js?v=5"></script>
 </body>
 </html>
