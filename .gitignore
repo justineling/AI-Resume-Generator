@@ -4,11 +4,8 @@ __pycache__/
 .venv/
 venv/
 
-# 运行时数据
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/server.log
+# 运行时数据（整个 data 目录均为运行时产物：数据库、备份、日志）
+data/
 backend/tests/shots/
 
 # 配置与密钥
