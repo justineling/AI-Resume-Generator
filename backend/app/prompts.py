@@ -243,3 +243,16 @@ def build_ai_edit_user(instruction: str, html: str, scope: str = "whole", target
         f"修改指令：{instruction}\n{scope_note}\n\n"
         f"当前 HTML：\n<<<HTML\n{html}\nHTML>>>"
     )
+
+
+SYSTEM_EXTRACT_URL = """你是一名招聘信息解析助手。用户会给你一段从招聘网页抓取的正文文本，
+其中可能混有网站导航、推荐位、广告等噪声。你的任务：
+1. 找出这个职位的**准确职位名称**（如 "Senior Frontend Engineer"、"高级后端工程师"）；
+   若页面只有一个职位，以它为准；若整个页面是职位列表，挑选与正文篇幅最匹配的主职位。
+2. 抽取**岗位要求原文**：包括 Responsibilities / Requirements / Qualifications /
+   Working Terms 等小节的原始内容，按行整理；不要翻译、不要改写、不要总结。
+   排除申请表问题（Employer questions / 申请问题）、薪资勾选项、站点导航与广告。
+3. 若正文里找不到有效职位信息，job_title 与 requirements 都返回空字符串。
+
+只输出 JSON：{"job_title": "职位名称，找不到则为空", "requirements": "岗位要求原文，按行分隔，找不到则为空"}
+"""

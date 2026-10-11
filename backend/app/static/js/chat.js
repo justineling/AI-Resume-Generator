@@ -32,6 +32,52 @@ export function initChat({ openResume, switchView: switchTo }) {
   $("#btn-empty-new-chat").addEventListener("click", newChat);
   $("#chat-list").addEventListener("click", onListClick);
 
+  // ---- 从招聘链接导入 ----
+  const importBox = $("#import-url-box");
+  const importStatus = $("#import-url-status");
+  const showImport = () => {
+    importBox.hidden = false;
+    importStatus.textContent = "";
+    importStatus.className = "test-result";
+    $("#import-url-input").value = "";
+    $("#import-url-input").focus();
+  };
+  $("#btn-import-url").addEventListener("click", showImport);
+  $("#btn-empty-import-url").addEventListener("click", showImport);
+  $("#btn-import-cancel").addEventListener("click", () => { importBox.hidden = true; });
+  $("#btn-import-confirm").addEventListener("click", async () => {
+    const btn = $("#btn-import-confirm");
+    const url = $("#import-url-input").value.trim();
+    if (!url) {
+      importStatus.className = "test-result is-err";
+      importStatus.textContent = "请先粘贴招聘页面的链接";
+      return;
+    }
+    const auto = $("#import-auto-generate").checked;
+    btn.disabled = true;
+    btn.textContent = "抓取中…";
+    importStatus.className = "test-result is-pending";
+    importStatus.textContent = "正在抓取网页并识别职位信息…";
+    try {
+      const chat = await api.importFromUrl(url, auto);
+      importBox.hidden = true;
+      await refreshChats();
+      await openChat(chat.id);
+      toast(
+        chat.raw_text
+          ? "已从链接导入职位信息，请核对无误后点「生成简历」"
+          : "已创建对话，但未能识别岗位要求，请手动补充",
+        chat.raw_text ? "ok" : "err",
+      );
+    } catch (err) {
+      importStatus.className = "test-result is-err";
+      importStatus.textContent = `导入失败：${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "导入";
+    }
+  });
+
   $("#btn-chat-generate").addEventListener("click", generateChat);
   $("#btn-chat-cancel").addEventListener("click", cancelChat);
   $("#btn-chat-retry").addEventListener("click", retryChat);

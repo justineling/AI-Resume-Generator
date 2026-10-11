@@ -13,10 +13,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..db import get_session
 from ..events import EVENT_CHAT_MESSAGE, hub
+from ..llm import build_client, get_runtime_config
 from ..models import Chat, ChatMessage, EditLog, Profile, Resume
 from ..pipeline import _profile_to_dict
 from ..scheduler import scheduler
@@ -132,6 +134,74 @@ def _get_chat_or_404(session: Session, chat_id: int) -> Chat:
     if not chat:
         raise HTTPException(404, "对话不存在")
     return chat
+
+
+# --------------------------------------------------------------------------- #
+# 从招聘链接导入（URL → 抓取 → 抽取职位名称与要求）
+# --------------------------------------------------------------------------- #
+class URLImportIn(BaseModel):
+    """从 URL 导入岗位信息。"""
+
+    url: str
+    auto_generate: bool = False   # True 时抽取成功后自动触发生成
+
+
+@router.post("/import-url", response_model=ChatOut, status_code=201)
+async def import_chat_from_url(
+    payload: URLImportIn, session: Session = Depends(get_session)
+) -> ChatOut:
+    """抓取招聘页面，抽取职位名称与岗位要求，创建一个已填好的新对话。
+
+    抽取优先用 LLM（已配置 key 时），失败回落启发式分节。
+    auto_generate=True 且抽取到岗位要求时，创建后自动入队生成。
+    """
+    from ..fetch import FetchError, extract_jd_from_text, fetch_url_text
+
+    try:
+        page = await fetch_url_text(payload.url)
+    except FetchError as exc:
+        raise HTTPException(422, str(exc))
+
+    client = build_client(session)
+    jd = await extract_jd_from_text(page["text"], client if client.enabled else None)
+    requirements = (jd.get("requirements") or "").strip()
+    job_title = (jd.get("job_title") or "").strip()
+    if not requirements:
+        raise HTTPException(
+            422,
+            "已抓取网页，但未能识别出岗位要求。该页面可能是职位列表或由脚本渲染，"
+            "请打开链接手动复制职位名称与岗位要求。",
+        )
+    if not job_title:
+        job_title = page["page_title"][:80] or "新对话"
+
+    chat = Chat(
+        title=job_title[:80] or "新对话",
+        status="draft",
+        profile_snapshot=_global_profile_dict(session),
+        profile_dirty=False,
+        source=page["final_url"][:500],
+    )
+    session.add(chat)
+    session.commit()
+    session.refresh(chat)
+
+    msg = ChatMessage(
+        chat_id=chat.id, role="user", kind="jd",
+        content=requirements, meta={"imported_from": page["final_url"][:500]},
+    )
+    session.add(msg)
+    chat.raw_text = requirements
+    chat.updated_at = datetime.now()
+    session.add(chat)
+    session.commit()
+
+    if payload.auto_generate:
+        await scheduler.enqueue(chat.id)
+
+    out = _chat_out(chat, session)
+    out.extracted_title = job_title[:120]
+    return out
 
 
 # --------------------------------------------------------------------------- #

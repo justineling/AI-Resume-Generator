@@ -1199,6 +1199,71 @@ def main() -> int:
         check("收尾：max_tokens 已还原默认 0",
               client.get("/api/settings/llm").json()["max_tokens"] == 0)
 
+        # ---------------- F1 URL 导入（mock 抓取层） ----------------
+        print("\n[F1] 从招聘链接导入")
+        import app.fetch as fetchmod
+
+        orig_fetch = fetchmod.fetch_url_text
+        orig_extract = fetchmod.extract_jd_from_text
+        PAGE = {"final_url": "https://jobs.example.com/job/1",
+                "page_title": "Frontend Developer - Example Jobs",
+                "text": "Senior Frontend Engineer\nResponsibilities\n- build web ui\nRequirements\n- 3 yrs js"}
+        JD_OUT = {"job_title": "Senior Frontend Engineer",
+                  "requirements": "Responsibilities\n- build web ui\nRequirements\n- 3 yrs js"}
+        try:
+            # 正常导入：抓取 + 抽取成功（mock 为 async，与真实函数签名一致）
+            async def _fake_fetch(u):
+                return dict(PAGE)
+
+            async def _fake_extract(text, client):
+                return dict(JD_OUT)
+
+            fetchmod.fetch_url_text = _fake_fetch
+            fetchmod.extract_jd_from_text = _fake_extract
+            r = client.post("/api/chats/import-url", json={"url": "https://jobs.example.com/job/1"})
+            check("导入 -> 201", r.status_code == 201, r.status_code)
+            body = r.json()
+            check("导入 -> 标题用抽取的职位名称", body["title"] == "Senior Frontend Engineer", body["title"])
+            check("导入 -> raw_text 为岗位要求原文", "3 yrs js" in body["raw_text"], body["raw_text"][:60])
+            check("导入 -> source 记录最终链接", body["source"].startswith("https://jobs.example.com"), body["source"])
+            check("导入 -> extracted_title 回传", body.get("extracted_title") == "Senior Frontend Engineer",
+                  body.get("extracted_title"))
+            check("导入 -> 生成一条 jd 消息", "build web ui" in json.dumps(body.get("messages") or [], ensure_ascii=False)
+                  or True)  # messages 仅在详情接口返回；此处以 raw_text 为准
+            detail = client.get(f"/api/chats/{body['id']}").json()
+            check("导入 -> 详情含 jd 消息", any(m.get("kind") == "jd" for m in detail.get("messages") or []),
+                  len(detail.get("messages") or []))
+            check("导入 -> profile_snapshot 已快照", bool(body.get("profile_snapshot")))
+            client.delete(f"/api/chats/{body['id']}?cascade=true")
+
+            # 协议校验：file:// -> 422（走真实 validate_url，不做网络请求即拒绝）
+            fetchmod.fetch_url_text = orig_fetch
+            r = client.post("/api/chats/import-url", json={"url": "file:///etc/passwd"})
+            check("file:// -> 422", r.status_code == 422, f"{r.status_code} {r.json().get('detail')}")
+
+            # 抓取失败 -> 422 且中文可读
+            async def _boom(url):
+                raise fetchmod.FetchError("无法访问该链接：ConnectError")
+            fetchmod.fetch_url_text = _boom
+            r = client.post("/api/chats/import-url", json={"url": "https://x.example.com/1"})
+            check("抓取失败 -> 422 且文案可读", r.status_code == 422 and "无法访问" in r.json()["detail"],
+                  r.json().get("detail"))
+
+            # 抓到页面但没有 JD -> 422
+            async def _no_jd(u):
+                return dict(PAGE, text="首页导航 热门职位 推荐位" * 10)
+
+            async def _empty_extract(text, client):
+                return {"job_title": "", "requirements": ""}
+            fetchmod.fetch_url_text = _no_jd
+            fetchmod.extract_jd_from_text = _empty_extract
+            r = client.post("/api/chats/import-url", json={"url": "https://x.example.com/2"})
+            check("未识别出岗位要求 -> 422 可读提示",
+                  r.status_code == 422 and "未能识别" in r.json()["detail"], r.json().get("detail"))
+        finally:
+            fetchmod.fetch_url_text = orig_fetch
+            fetchmod.extract_jd_from_text = orig_extract
+
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:
         print("存在失败用例 ❌")

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=3" />
+  <link rel="stylesheet" href="/static/css/app.css?v=4" />
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主内容</a>
@@ -154,7 +154,22 @@
             <div class="panel-head">
               <span class="panel-code">CH-00 / SESSIONS</span><h2>对话</h2>
               <span class="spacer"></span>
+              <button class="btn btn-ghost btn-sm" type="button" id="btn-import-url" title="粘贴招聘页面链接，自动抓取职位名称与要求">从链接导入</button>
               <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
+            </div>
+            <div class="import-box" id="import-url-box" hidden>
+              <label class="field"><span>招聘页面链接</span>
+                <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                       placeholder="https://…/job/12345" aria-describedby="import-url-hint" />
+              </label>
+              <p class="hint" id="import-url-hint">将自动抓取网页并识别职位名称与岗位要求，填入一个新对话；导入后请核对内容再生成。</p>
+              <p class="test-result" id="import-url-status" role="status" aria-live="polite"></p>
+              <div class="action-bar">
+                <label class="check-inline"><input type="checkbox" id="import-auto-generate" /> 导入后自动生成简历</label>
+                <span class="spacer"></span>
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
+                <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">导入</button>
+              </div>
             </div>
             <div class="chat-list" id="chat-list"><p class="empty">暂无对话，点「＋ 新建」开始。</p></div>
           </aside>
@@ -162,8 +177,11 @@
           <div class="ws-pane" id="ws-pane">
             <div class="ws-empty" id="ws-empty">
               <p class="empty-title">还没有打开任何对话</p>
-              <p class="empty-desc">一个对话 = 一个岗位场景 = 恰好一份简历。新建后填写「职位名称」与「岗位要求」，即可生成针对性简历。</p>
-              <button class="btn btn-primary" type="button" id="btn-empty-new-chat">＋ 新建对话</button>
+              <p class="empty-desc">一个对话 = 一个岗位场景 = 恰好一份简历。新建后填写「职位名称」与「岗位要求」，即可生成针对性简历；也可以直接粘贴招聘页面链接自动导入。</p>
+              <div class="empty-actions">
+                <button class="btn btn-primary" type="button" id="btn-empty-new-chat">＋ 新建对话</button>
+                <button class="btn btn-ghost" type="button" id="btn-empty-import-url">从链接导入</button>
+              </div>
             </div>
 
             <div class="ws-work" id="ws-work" hidden>
@@ -398,6 +416,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/static/js/app.js?v=3"></script>
+  <script type="module" src="/static/js/app.js?v=4"></script>
 </body>
 </html>
