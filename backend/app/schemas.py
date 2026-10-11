@@ -58,6 +58,44 @@ class ProfileIn(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
+# --------------------------- AI 面试问答（flashcard） --------------------------- #
+class InterviewQuestion(BaseModel):
+    """一张 flashcard：向用户提一个具体问题。"""
+
+    id: str
+    topic: str = ""
+    question: str
+    hint: str = ""
+    placeholder: str = ""
+
+
+class InterviewAnswer(BaseModel):
+    """用户对某张卡的回答（可为空 = 跳过）。"""
+
+    id: str = ""
+    topic: str = ""
+    question: str = ""
+    answer: str = ""
+
+
+class ProfileInterviewIn(BaseModel):
+    """资料页：请求生成问题（focus 可选，用来引导关注方向）。"""
+
+    focus: str = ""
+
+
+class InterviewQuestionsOut(BaseModel):
+    questions: list[InterviewQuestion] = Field(default_factory=list)
+    gaps: list[dict[str, Any]] = Field(default_factory=list)
+    source: str = "mock"          # llm | mock
+
+
+class InterviewAnswersIn(BaseModel):
+    answers: list[InterviewAnswer] = Field(default_factory=list)
+    # 工作区用：提交后是否立即开始生成
+    auto_generate: bool = True
+
+
 class ProfileOut(ProfileIn):
     id: int
     created_at: datetime

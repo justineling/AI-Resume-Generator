@@ -355,6 +355,11 @@ html, body { overflow-x: hidden; }
   position: absolute; right: 0; bottom: 0;
   width: 140px; height: 2px; background: var(--signal);
 }
+/* 视图头部操作区：与 kicker/title/lede 同为一列，靠右不溢出 */
+.view-head-actions {
+  display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px;
+}
 
 /* ============================ 面板 ============================ */
 .panel-grid {
@@ -423,7 +428,10 @@ html, body { overflow-x: hidden; }
 }
 .field-block { margin-bottom: 12px; }
 
-input[type="text"], input[type="number"], input[type="password"], select, textarea {
+/* 用「排除法」覆盖所有文本类输入：此前只列了 text/number/password，
+   导致 type="url"（招聘链接输入框）完全没有样式——深色下文字与底色撞色看不清。 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+select, textarea {
   width: 100%;
   background: var(--ink);
   border: 1px solid var(--rule-strong);
@@ -679,6 +687,55 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .dialog-head h2 { margin: 4px 0 0; font-size: 17px; }
 .dialog-wide { width: min(760px, 94vw); }
 
+/* ---------------------------- AI 问答（flashcard） ---------------------------- */
+.dialog-iv { width: min(720px, 94vw); overflow-y: auto; }
+.iv-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.iv-head-main { display: flex; flex-direction: column; min-width: 0; }
+.iv-head h2 { margin: 4px 0 0; font-size: 17px; }
+.iv-progress {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: 0.1em; color: var(--fg-dim); white-space: nowrap;
+}
+
+.iv-gaps {
+  border: 1px solid var(--rule); border-left: 2px solid var(--warn);
+  background: var(--signal-tint); color: var(--fg-dim);
+  padding: 9px 12px; font-size: 12px;
+}
+.iv-gaps-lead { margin: 0; color: var(--fg); }
+.iv-gaps ul { margin: 6px 0 0; padding-left: 18px; }
+.iv-gaps li { margin: 2px 0; }
+
+.iv-card {
+  margin-top: 14px; border: 1px solid var(--rule);
+  background: var(--tint-soft); padding: 14px 15px;
+}
+.iv-topic {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--signal);
+}
+.iv-question { margin: 7px 0 0; font-size: 17px; line-height: 1.5; font-weight: 700; color: var(--fg); }
+.iv-hint { margin: 7px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--muted); }
+.iv-answer { margin-top: 12px; min-height: 96px; }
+
+.iv-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.iv-dot {
+  appearance: none; width: 14px; height: 14px; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid var(--rule-strong);
+  transition: all var(--t-direct) var(--ease);
+}
+.iv-dot:hover { border-color: var(--fg-dim); }
+.iv-dot.is-done { background: var(--state); border-color: var(--state); }
+.iv-dot.is-current { border: 2px solid var(--signal); background: var(--signal-tint-strong); }
+.iv-dot.is-current.is-done { background: var(--state); border-color: var(--signal); }
+.iv-dot:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.iv-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);
+}
+.iv-foot .spacer { flex: 1 1 auto; }
+
 /* 保证 hidden 属性始终生效（.field 的 display:flex 会覆盖 UA 的 [hidden] 规则） */
 [hidden] { display: none !important; }
 
@@ -892,7 +949,9 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
   .head-actions { width: 100%; justify-content: flex-end; margin-left: 0; }
   .panel-head .spacer { display: none; }
   .btn-sm { padding: 6px 9px; font-size: 11px; }
-  .import-box { padding: 10px; }
+  .import-box { padding: 0; }
+  .import-head, .import-field, .import-foot { padding-left: 10px; padding-right: 10px; }
+  .import-hint, .import-box .test-result { margin-left: 10px; margin-right: 10px; }
   .import-box .action-bar { flex-wrap: wrap; }
   .topbar { gap: 10px; padding: 0 12px; }
   .wordmark-text small { display: none; }
@@ -917,18 +976,81 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
   .studio-toolbar { flex-direction: column; align-items: stretch; }
   .studio-actions { margin-left: 0; }
   .footer { flex-direction: column; gap: 2px; padding: 8px 16px; }
+  /* 问答弹窗：卡片撑满，页脚按钮换行不溢出 */
+  .dialog-iv { width: 94vw; }
+  .iv-head { gap: 8px; }
+  .iv-progress { margin-left: 0; }
+  .iv-head .btn { margin-left: auto; }
+  .iv-card { padding: 12px; }
+  .iv-question { font-size: 15.5px; }
+  .iv-answer { min-height: 84px; }
+  .iv-foot { gap: 8px; }
+  .iv-foot .spacer { display: none; }
+  .iv-foot .btn { flex: 1 1 auto; }
 }
 
 
 /* ---- API Key 状态条 ---- */
-.key-status{font-family:var(--mono); font-size:11px; letter-spacing:.04em; padding:6px 9px; border:1px solid var(--rule); margin:0 0 8px;}
+.key-status{font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; padding:6px 9px; border:1px solid var(--rule); margin:0 0 8px;}
 .key-status.is-ok{border-color:var(--state); background:var(--state-tint); color:var(--state);}
 .key-status.is-missing{border-color:var(--signal-tint-strong); background:var(--signal-tint); color:var(--signal);}
 
 /* ---- 从链接导入 ---- */
-.import-box{border:1px solid var(--rule); background:var(--signal-tint); padding:12px; margin:0 0 10px; display:flex; flex-direction:column; gap:8px;}
-.import-box .field span{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--muted);}
-.import-box .action-bar{display:flex; align-items:center; gap:8px;}
-.check-inline{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text); cursor:pointer;}
-.check-inline input{accent-color:var(--signal); width:auto;}
+/* ---- 从链接导入（Ark 风格：方角 / 1px 线 / 等宽 / 青色信号） ---- */
+.import-box{
+  border:1px solid var(--rule-strong); background:var(--signal-tint);
+  margin:0 0 10px; padding:0; display:flex; flex-direction:column;
+  /* 左侧信号色竖条，与面板头部呼应 */
+  border-left:2px solid var(--signal);
+}
+.import-head{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:9px 12px; border-bottom:1px solid var(--rule);
+  background:var(--tint-soft);
+}
+.import-head h3{
+  margin:0; font-size:12.5px; font-weight:700; letter-spacing:.02em; color:var(--fg);
+}
+/* 用 CSS 画一个「链接」标记，避免引入 emoji / 图标字体 */
+.import-mark{
+  width:12px; height:12px; flex:0 0 auto; position:relative;
+  border:1.5px solid var(--signal); border-radius:var(--radius);
+}
+.import-mark::after{
+  content:""; position:absolute; left:3px; top:3px; width:6px; height:6px;
+  background:var(--signal); opacity:.55;
+}
+.import-code{
+  margin-left:auto; font-family:var(--font-mono); font-size:9.5px;
+  letter-spacing:.14em; color:var(--signal); white-space:nowrap;
+}
+.import-field{ padding:12px 12px 0; }
+.import-field > span{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.import-input-row{ display:flex; align-items:center; }
+/* URL 属技术信息：用等宽字体，并加大内边距便于阅读 */
+.import-box #import-url-input{
+  font-family:var(--font-mono); font-size:12.5px; padding:10px 12px;
+  background:var(--surface); border-color:var(--rule-strong); color:var(--fg);
+}
+.import-box #import-url-input::placeholder{ color:var(--muted); font-family:var(--font-mono); }
+.import-box #import-url-input:focus{
+  outline:none; border-color:var(--signal); background:var(--ink);
+  box-shadow:inset 2px 0 0 var(--signal);
+}
+.import-hint{
+  margin:9px 12px 0; font-size:11.5px; line-height:1.65; color:var(--muted);
+}
+.import-hint strong{ color:var(--fg-dim); font-weight:600; }
+.import-box .test-result{ margin:8px 12px 0; }
+.import-foot{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 12px 12px; margin-top:10px; border-top:1px solid var(--rule);
+}
+.import-actions{ display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; }
+
+.check-inline{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--fg); cursor:pointer;}
+.check-inline input{accent-color:var(--signal); width:auto; flex:0 0 auto;}
 .empty-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}

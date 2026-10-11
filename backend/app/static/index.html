@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=7" />
+  <link rel="stylesheet" href="/static/css/app.css?v=8" />
   <script>
     /* 在首帧之前套用已保存的颜色模式，避免先闪一下深色再切浅色 */
     (function () {
@@ -71,6 +71,9 @@
           <p class="kicker">MATERIAL LIBRARY / 01</p>
           <h1 class="view-title">资料库<span class="view-title-en">PROFILE</span></h1>
           <p class="view-lede">这里的资料是简历的"素材库"。模型只会从你填写的内容里取材，不会凭空编造学历、公司与数字。</p>
+          <div class="view-head-actions">
+            <button class="btn btn-ghost" type="button" id="btn-profile-ai">让 AI 帮我完善</button>
+          </div>
           <span class="title-rule" aria-hidden="true"></span>
         </header>
 
@@ -172,20 +175,36 @@
                 <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
               </div>
             </div>
-            <div class="import-box" id="import-url-box" hidden>
-              <label class="field"><span>招聘页面链接</span>
-                <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-                       placeholder="https://…/job/12345" aria-describedby="import-url-hint" />
+            <section class="import-box" id="import-url-box" hidden aria-labelledby="import-box-title">
+              <header class="import-head">
+                <span class="import-mark" aria-hidden="true"></span>
+                <h3 id="import-box-title">从招聘链接导入</h3>
+                <span class="import-code">URL-01</span>
+              </header>
+              <label class="field import-field">
+                <span>招聘页面链接</span>
+                <div class="import-input-row">
+                  <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                         placeholder="https://my.jobstreet.com/job/12345678"
+                         aria-describedby="import-url-hint" />
+                </div>
               </label>
-              <p class="hint" id="import-url-hint">将自动抓取网页并识别职位名称与岗位要求，填入一个新对话；导入后请核对内容再生成。</p>
+              <p class="import-hint" id="import-url-hint">
+                粘贴职位详情页链接，系统会抓取页面并识别<strong>职位名称</strong>与<strong>岗位要求</strong>，
+                填入一个新对话。仅支持 http(s)，抓取超时 20 秒。
+              </p>
               <p class="test-result" id="import-url-status" role="status" aria-live="polite"></p>
-              <div class="action-bar">
-                <label class="check-inline"><input type="checkbox" id="import-auto-generate" /> 导入后自动生成简历</label>
-                <span class="spacer"></span>
-                <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
-                <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">导入</button>
+              <div class="import-foot">
+                <label class="check-inline">
+                  <input type="checkbox" id="import-auto-generate" />
+                  <span>导入后自动生成简历</span>
+                </label>
+                <div class="import-actions">
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
+                  <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">开始导入</button>
+                </div>
               </div>
-            </div>
+            </section>
             <div class="chat-list" id="chat-list"><p class="empty">暂无对话，点「＋ 新建」开始。</p></div>
           </aside>
 
@@ -437,8 +456,41 @@
     </form>
   </dialog>
 
+  <!-- ================= AI 问答（flashcard）弹窗：资料页 / 工作区共用 ================= -->
+  <dialog id="interview-dialog" class="dialog dialog-iv" aria-labelledby="iv-title">
+    <div class="dialog-form">
+      <header class="dialog-head iv-head">
+        <div class="iv-head-main">
+          <span class="panel-code">IV-01 / INTERVIEW</span>
+          <h2 id="iv-title">AI 问答</h2>
+        </div>
+        <span class="iv-progress" id="iv-progress" role="status" aria-live="polite">第 1 / 1 张</span>
+        <button class="btn btn-ghost btn-sm" type="button" id="iv-skip-all">跳过</button>
+      </header>
+
+      <div class="iv-gaps" id="iv-gaps" hidden></div>
+
+      <div class="iv-card">
+        <span class="iv-topic" id="iv-topic" hidden></span>
+        <p class="iv-question" id="iv-question">—</p>
+        <p class="iv-hint" id="iv-hint" hidden></p>
+        <textarea id="iv-answer" class="iv-answer" rows="4" spellcheck="false"></textarea>
+      </div>
+
+      <div class="iv-dots" id="iv-dots" role="group" aria-label="问题导航"></div>
+
+      <div class="iv-foot">
+        <button class="btn btn-ghost" type="button" id="iv-skip-card">跳过这张</button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" type="button" id="iv-prev">上一张</button>
+        <button class="btn btn-ghost" type="button" id="iv-next">下一张</button>
+        <button class="btn btn-primary" type="button" id="iv-submit">确认提交</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/static/js/app.js?v=5"></script>
+  <script type="module" src="/static/js/app.js?v=8"></script>
 </body>
 </html>

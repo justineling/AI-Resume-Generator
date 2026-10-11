@@ -117,6 +117,39 @@
   在首帧前应用防闪烁；切换立即生效（change 事件），不走后端。
 - **简历文档不跟随主题**：renderer 保持白纸黑字（简历=纸张，与 PDF 导出一致）。
 
+## AI 问答（flashcard）：先问清楚，再写简历
+- `app/interview.py`：问题生成 + 回答整合（LLM 优先，无 key 走启发式降级）。
+  资料页问题找「资料不够具体」处；工作区问题用 **requirements 与资料的关键词重合度**定位缺口。
+- **回答整合必须用「增量契约」**：只返回 `{summary_append, achievements[{exp_index,text}],
+  skill_notes, projects_append}`，由 `_merge_delta` 合并。
+  **不要改成让模型输出整份 profile JSON** —— 实测输出量过大导致 200s+ 超时（增量后 5.1s）。
+- 合并规则：只追加不改写；`exp_index` 越界忽略；`skill_notes` 只更新已存在的技能名
+  （不允许模型新增技能，避免造出用户没有的技能）。
+- **Esc = 取消（不生成）**；「跳过，直接生成」是独立显式按钮，两者语义不可混用。
+- **同一 JD 问过一次就不再问**（缺口已被补进快照）→ 不弹卡直接生成，这是预期行为。
+
+## CSS 约定（踩过的坑）
+- **输入框样式用「排除法」覆盖**：`input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]), select, textarea`。
+  **不要逐个列 `type="text"/"number"/"password"`** —— 新增 `type="url"`（招聘链接框）时漏样式，
+  表现为「深色下文字看不清」（无背景/无颜色，与底色撞色）。这类漏样式**不报错、只静默失效**。
+- **定期复检失效的 CSS 变量**：把 `^\s*(--x)\s*:` 的定义集与 `var\((--x)` 的引用集求差。
+  已发现过 `var(--mono)`（应为 `--font-mono`）、`var(--text)`（应为 `--fg`）等拼写错误。
+- 浅色主题下所有叠加色必须走 token（见上文颜色模式）。
+
+## 测试数据隔离（重要）
+- **所有 UI 测试脚本默认自起隔离服务**（`backend/tests/_ui_server.py`）：
+  ui_check 8121 / e2e_verify 8122 / settings_ui_check 8124 / chat_e2e 8125 / iv_check 8126。
+  仅当显式设置 `BASE_URL` 时才用外部服务（会打印风险提示）。
+- **绝不能让 UI 测试默认打 8000** —— 8000 是开发服务 + 用户真实库 `data/app.db`，
+  实测单日曾写入 200+ 条测试对话（`慢任务`/`occ0`/`queued`/`空资料任务` 等标题）。
+- 进程内测试（regression/smoke/xss/progress）用 `DATABASE_URL` 指向隔离库。
+- **验证隔离是否生效**：跑测试前后对比 `select count(*) from chat` 应完全一致。
+- **清理用户库里的测试数据时，走 API 级联删除**（`DELETE /api/chats/{id}?cascade=true`），
+  **不要直接删 SQL** —— API 会连带清理 ChatMessage / Resume / EditLog，不留孤儿记录。
+  删完用「orphan 检查」验证：`select count(*) from chatmessage where chat_id not in (select id from chat)`。
+- 注意 `ui_check.py` 末尾用 `os._exit()`（跳过 with/finally），必须在退出前显式
+  `stop_isolated_server()`；其他脚本可用 `with isolated_server(...)`。
+
 ## 招聘网页抓取（app/fetch.py）
 - **必须带完整浏览器头**：只带 `User-Agent` 会被 JobStreet 等站点判为爬虫返回 **403**；补齐 `Accept / sec-ch-ua / sec-fetch-* / 同源 Referer` 后实测 200。见 `fetch.BROWSER_HEADERS`。
 - `validate_url` 必须**先显式拒绝非 http(s) 协议**再补 `https://` 前缀，否则 `file://x` 会被盲加前缀放行。

@@ -30,6 +30,10 @@ export const api = {
   // 资料
   getProfile: () => api.get("/api/profile"),
   saveProfile: (p) => api.put("/api/profile", p),
+  // AI 面试问答（flashcard）
+  profileInterview: (focus) => api.post("/api/profile/interview", { focus: focus || "" }),
+  profileInterviewApply: (answers, autoGenerate = false) =>
+    api.post("/api/profile/interview/apply", { answers, auto_generate: !!autoGenerate }),
 
   // 对话工作区（一个 chat = 一个岗位场景 = 一份简历）
   listChats: () => api.get("/api/chats"),
@@ -49,6 +53,10 @@ export const api = {
   cancelChat: (id) => api.post(`/api/chats/${id}/cancel`),
   retryChat: (id) => api.post(`/api/chats/${id}/retry`),
   getCoverage: (id) => api.get(`/api/chats/${id}/coverage`),
+  // 生成前的 AI 问答（岗位需要但资料缺依据的点）
+  chatInterview: (id) => api.post(`/api/chats/${id}/interview`, {}),
+  chatInterviewSubmit: (id, answers, autoGenerate = true) =>
+    api.post(`/api/chats/${id}/interview/submit`, { answers, auto_generate: !!autoGenerate }),
 
   // 简历
   listResumes: () => api.get("/api/resumes"),

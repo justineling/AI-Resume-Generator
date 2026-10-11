@@ -320,6 +320,8 @@ enqueue(chat_id) ──► asyncio.Queue ──► worker #0 ─┐
 |---|---|---|
 | GET | `/api/health` | 健康检查（返回运行时配置：`llm_enabled`） |
 | GET / PUT | `/api/profile` | 读取 / 保存**全局**资料库 |
+| POST | `/api/profile/interview` | 生成一组 flashcard 问题，帮助把资料写得更专业更具体；`{focus?}`，返回 `{questions[], gaps[], source}` |
+| POST | `/api/profile/interview/apply` | 把用户的补充回答整合进全局资料；**只增补，不删除原有真实信息**，口语化回答会被提炼成专业表述 |
 | POST | `/api/chats` | 新建对话（创建时快照全局资料） |
 | POST | `/api/chats/import-url` | 粘贴招聘页面链接，自动抓取并识别职位名称与岗位要求，创建已填好的新对话；`{url, auto_generate?}`，`auto_generate=true` 时导入后自动生成。仅支持 http(s)；抓取超时 20s，正文截断 2 万字符 |
 | GET | `/api/chats` | 对话列表（含派生的 `resume_id`） |
@@ -330,6 +332,8 @@ enqueue(chat_id) ──► asyncio.Queue ──► worker #0 ─┐
 | POST | `/api/chats/{id}/profile/reset` | 快照重置回全局资料 |
 | POST / GET | `/api/chats/{id}/messages` | 追加 / 读取对话消息 |
 | POST | `/api/chats/{id}/generate` | 触发生成（无 JD→400，已在运行→409） |
+| POST | `/api/chats/{id}/interview` | 生成前先问：找出「岗位需要但资料缺依据」的缺口并出题；无 JD→400，生成中→409 |
+| POST | `/api/chats/{id}/interview/submit` | 提交问答补充（可为空 = 全部跳过）并整合进该对话的资料快照；`auto_generate=true` 时随即开始生成 |
 | POST | `/api/chats/{id}/cancel` | 取消 |
 | POST | `/api/chats/{id}/retry` | 重试 |
 | GET | `/api/chats/{id}/coverage` | 覆盖清单（未生成→404） |
@@ -533,6 +537,8 @@ iframe 天然做了样式隔离，同时保留了浏览器原生的编辑能力�
 ---
 
 ## 13. 已知限制
+
+- **AI 问答的补充内容仍受「不编造」约束**：用户回答会被提炼成专业表述并入资料，但不会新增用户没说过的公司名、年限、数字、学历。回答留空（跳过）完全合法，此时简历只基于原有资料生成。
 
 - **URL 导入是静态抓取**：不执行页面 JS，由前端脚本动态渲染的招聘页（部分站点）可能抓不到内容，此时会提示改为手动复制；仅支持 http(s) 链接，抓取超时 20 秒。
 

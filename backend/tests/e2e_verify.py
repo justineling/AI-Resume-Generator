@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.sanitize import sanitize_fragment  # noqa: E402
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8000")
+BASE = (os.environ.get("BASE_URL") or "").strip()  # 为空则自起隔离服务
 OK: list[str] = []
 BAD: list[str] = []
 
@@ -85,12 +85,12 @@ LEGIT_FRAGMENT = (
 )
 
 
-def main() -> int:
-    c = httpx.Client(base_url=BASE, timeout=60)
+def _run(base: str) -> int:
+    c = httpx.Client(base_url=base, timeout=60)
     try:
         c.get("/api/health")
     except Exception as exc:
-        print(f"无法连接 {BASE}，请先启动服务。({exc})")
+        print(f"无法连接 {base}，请先启动服务。({exc})")
         return 2
 
     save_profile(c)
@@ -143,7 +143,7 @@ def main() -> int:
         page.on("pageerror", lambda e: console.append(f"pageerror: {e}"))
 
         # --- 恶意内容页：CSP 应拦截，控制台应出现 CSP 违规（这正是生效的证据）---
-        page.goto(f"{BASE}/api/resumes/{rid}/preview", wait_until="load")
+        page.goto(f"{base}/api/resumes/{rid}/preview", wait_until="load")
         page.wait_for_timeout(700)
         check("CSP 兜底：脚本未执行", not page.title().startswith("PWNED"), f"title={page.title()[:36]!r}")
         check("CSP 兜底：内容仍渲染", page.evaluate('document.querySelector(".resume").getBoundingClientRect().height') > 100)
@@ -154,7 +154,7 @@ def main() -> int:
         console.clear()
         print("\n=== 5. 真实生成简历在 CSP 下的样式完整性 ===")
         _, rid_ok = new_resume(c, "样式检查", "- Python\n- Docker")
-        page.goto(f"{BASE}/api/resumes/{rid_ok}/preview", wait_until="load")
+        page.goto(f"{base}/api/resumes/{rid_ok}/preview", wait_until="load")
         page.wait_for_timeout(600)
         check(".r-name font-weight=800", page.evaluate('getComputedStyle(document.querySelector(".r-name")).fontWeight') == "800")
         check(".r-body 仍是 grid", page.evaluate('getComputedStyle(document.querySelector(".r-body")).display') == "grid")
@@ -167,7 +167,7 @@ def main() -> int:
         sigs: dict[str, str] = {}
         for lay in ["single-column", "sidebar-left", "two-column", "timeline", "compact-grid"]:
             c.post(f"/api/resumes/{rid_ok}/layout", json={"layout": lay})
-            page.goto(f"{BASE}/api/resumes/{rid_ok}/preview", wait_until="load")
+            page.goto(f"{base}/api/resumes/{rid_ok}/preview", wait_until="load")
             page.wait_for_timeout(420)
             sigs[lay] = page.evaluate(
                 """() => {
@@ -199,6 +199,20 @@ def main() -> int:
         for x in BAD:
             print("  -", x)
     return 1 if BAD else 0
+
+
+def main() -> int:
+    """默认自起隔离服务；显式设置 BASE_URL 时才用外部服务。
+
+    此前默认打 8000（开发服务 + 用户真实库），跑一次会往用户库里写测试数据。
+    """
+    explicit = (os.environ.get("BASE_URL") or "").strip()
+    if explicit:
+        print(f"[外部服务] {explicit} —— 若指向 8000，测试数据会写入用户真实库")
+        return _run(explicit)
+    from _ui_server import isolated_server
+    with isolated_server("e2e_verify", 8122) as base:
+        return _run(base)
 
 
 if __name__ == "__main__":

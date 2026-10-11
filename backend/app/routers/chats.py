@@ -23,6 +23,8 @@ from ..models import Chat, ChatMessage, EditLog, Profile, Resume
 from ..pipeline import _profile_to_dict
 from ..scheduler import scheduler
 from ..schemas import (
+    InterviewAnswersIn,
+    InterviewQuestionsOut,
     ChatIn,
     ChatMessageIn,
     ChatMessageOut,
@@ -196,8 +198,9 @@ async def import_chat_from_url(
     session.add(chat)
     session.commit()
 
-    if payload.auto_generate:
-        await scheduler.enqueue(chat.id)
+    # 这里**不直接入队**：生成前需要插入「AI 问答」步骤（flashcard），
+    # 由前端在导入完成后调用完整的生成流程（与手动点「生成简历」同一条路径）。
+    # 若在此直接 enqueue，会绕过问答步骤 —— auto_generate 仅作为前端的行为提示。
 
     out = _chat_out(chat, session)
     out.extracted_title = job_title[:120]
@@ -364,6 +367,91 @@ async def retry_chat(chat_id: int, session: Session = Depends(get_session)) -> C
     session.commit()
     await scheduler.enqueue(chat_id)
     session.refresh(chat)
+    return _chat_out(chat, session)
+
+
+@router.post("/{chat_id}/interview", response_model=InterviewQuestionsOut)
+async def chat_interview(
+    chat_id: int, session: Session = Depends(get_session)
+) -> InterviewQuestionsOut:
+    """在生成简历之前，先就「岗位需要但资料缺依据」的点向用户提问。
+
+    岗位要求若尚未解析，会先解析一次（不改变 chat 状态）。
+    """
+    from ..interview import generate_questions
+    from ..pipeline import _is_profile_empty, _normalize_analysis, _profile_from_snapshot
+    from .. import mock, prompts
+    from ..llm import LLMError
+
+    chat = _get_chat_or_404(session, chat_id)
+    if chat.status in ("running", "queued"):
+        raise HTTPException(409, "简历正在生成中，无法同时进行问答")
+
+    raw_text = (chat.raw_text or "").strip()
+    if not raw_text:
+        raise HTTPException(400, "请先填写「岗位要求」再进行问答")
+
+    profile = _profile_from_snapshot(chat.profile_snapshot)
+    if _is_profile_empty(profile):
+        raise HTTPException(400, "尚未填写资料库，请先在「资料」页保存你的资料")
+
+    analysis = chat.job_analysis or {}
+    if not analysis.get("requirements"):
+        client = build_client(session)
+        if client.enabled:
+            try:
+                analysis = await client.chat_json(
+                    prompts.SYSTEM_ANALYZE, prompts.build_analyze_user(raw_text)
+                )
+            except (LLMError, ValueError) as exc:
+                raise HTTPException(422, f"岗位解析失败：{exc}")
+        else:
+            analysis = mock.analyze_job(raw_text)
+        analysis = _normalize_analysis(analysis)
+        chat.job_analysis = analysis
+        chat.updated_at = datetime.now()
+        session.add(chat)
+        session.commit()
+
+    result = await generate_questions(profile, analysis, build_client(session))
+    return InterviewQuestionsOut(**result)
+
+
+@router.post("/{chat_id}/interview/submit", response_model=ChatOut)
+async def chat_interview_submit(
+    chat_id: int, payload: InterviewAnswersIn, session: Session = Depends(get_session)
+) -> ChatOut:
+    """把问答补充整合进该对话的资料快照；auto_generate=True 时随即开始生成。"""
+    from ..interview import apply_answers
+    from ..pipeline import _profile_from_snapshot
+
+    chat = _get_chat_or_404(session, chat_id)
+    if chat.status in ("running", "queued"):
+        raise HTTPException(409, "简历正在生成中")
+
+    answers = [a.model_dump() for a in payload.answers]
+    answers = [a for a in answers if str(a.get("answer") or "").strip()]
+    if answers:
+        snapshot = _profile_from_snapshot(chat.profile_snapshot) or _global_profile_dict(session)
+        merged = await apply_answers(snapshot, answers, build_client(session), for_chat=True)
+        chat.profile_snapshot = merged
+        chat.profile_dirty = True          # 快照已被本对话定制
+        chat.updated_at = datetime.now()
+        session.add(chat)
+        # 把问答记录进对话消息，便于回看
+        session.add(ChatMessage(
+            chat_id=chat.id, role="user", kind="guidance",
+            content="\n\n".join(f"Q：{a.get('question','')}\nA：{a.get('answer','')}" for a in answers),
+            meta={"type": "interview"},
+        ))
+        session.commit()
+        session.refresh(chat)
+
+    if payload.auto_generate:
+        if not (chat.raw_text or "").strip():
+            raise HTTPException(400, "请先填写「岗位要求」")
+        await scheduler.enqueue(chat.id)
+        session.refresh(chat)
     return _chat_out(chat, session)
 
 

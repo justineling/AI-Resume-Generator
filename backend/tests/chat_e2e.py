@@ -22,7 +22,7 @@ from pathlib import Path
 import httpx
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8010")
+BASE = (os.environ.get("BASE_URL") or "").strip()  # 为空则自起隔离服务
 SHOTS = Path(__file__).resolve().parent / "shots"
 SHOTS.mkdir(parents=True, exist_ok=True)
 
@@ -77,12 +77,12 @@ def check(name: str, cond: bool, detail: object = "") -> None:
     print(f"  {'PASS' if cond else 'FAIL'}  {name}  {detail}")
 
 
-def main() -> int:
-    c = httpx.Client(base_url=BASE, timeout=60)
+def _run(base: str) -> int:
+    c = httpx.Client(base_url=base, timeout=60)
     try:
         c.get("/api/health")
     except Exception as exc:  # pragma: no cover
-        print(f"无法连接 {BASE}，请先启动服务。({exc})")
+        print(f"无法连接 {base}，请先启动服务。({exc})")
         return 2
 
     # 先落全局资料，确保新建对话的快照有素材
@@ -97,7 +97,7 @@ def main() -> int:
         page.on("pageerror", lambda e: console.append(f"pageerror: {e}"))
 
         print("\n=== 1. 加载应用与三视图导航 ===")
-        page.goto(BASE, wait_until="load")
+        page.goto(base, wait_until="load")
         page.wait_for_selector("#chat-list", timeout=15000)
         page.wait_for_timeout(400)
         rail = page.eval_on_selector_all(".rail-item", "els => els.map(e => e.dataset.view)")
@@ -124,8 +124,15 @@ def main() -> int:
         check("填好后生成按钮可用",
               page.get_attribute("#btn-chat-generate", "disabled") is None)
 
-        print("\n=== 4. 生成简历（先保存有变化的字段，再生成）===")
+        print("\n=== 4. 生成简历（保存字段 → 生成前 AI 问答 → 生成）===")
         page.click("#btn-chat-generate")
+        # 流程变更：点「生成简历」后，若资料对岗位有缺口会先弹 AI 问答卡。
+        # 本脚本不测问答细节，出现弹窗即点「跳过，直接生成」，继续走原生成流程。
+        try:
+            page.wait_for_selector("#interview-dialog[open]", timeout=6000)
+            page.click("#iv-skip-all")
+        except Exception:
+            pass  # 资料已足够完善时不会弹窗，直接生成
         page.wait_for_selector('#ws-status[data-status="succeeded"]', timeout=45000)
         page.wait_for_timeout(400)
         check("状态为已完成",
@@ -186,6 +193,20 @@ def main() -> int:
         for x in BAD:
             print("  -", x)
     return 1 if BAD else 0
+
+
+def main() -> int:
+    """默认自起隔离服务；显式设置 BASE_URL 时才用外部服务。
+
+    此前默认打 8010/8000 的外部服务，容易误连用户真实库。
+    """
+    explicit = (os.environ.get("BASE_URL") or "").strip()
+    if explicit:
+        print(f"[外部服务] {explicit} —— 若指向 8000，测试数据会写入用户真实库")
+        return _run(explicit)
+    from _ui_server import isolated_server
+    with isolated_server("chat_e2e", 8125) as base:
+        return _run(base)
 
 
 if __name__ == "__main__":
