@@ -1264,6 +1264,81 @@ def main() -> int:
             fetchmod.fetch_url_text = orig_fetch
             fetchmod.extract_jd_from_text = orig_extract
 
+        # ---------------- F2 AI 问答（flashcard） ----------------
+        print("\n[F2] AI 问答（先问清楚再写简历）")
+        # 资料页：生成问题
+        client.put("/api/profile", json={
+            "name": "张三", "headline": "高级后端工程师",
+            "skills": [{"name": "Python", "level": "精通", "category": "语言"}],
+            "experiences": [{"company": "ACME", "title": "后端工程师", "start": "2021", "end": "2024",
+                             "achievements": ["P99 从 800ms 降到 120ms"], "tech": ["Python"]}],
+        })
+        r = client.post("/api/profile/interview", json={})
+        check("资料页问答 -> 200", r.status_code == 200, r.status_code)
+        d = r.json()
+        qs = d.get("questions") or []
+        check("返回问题列表且结构完整",
+              bool(qs) and all(k in qs[0] for k in ("id", "topic", "question", "hint", "placeholder")),
+              f"{len(qs)} 张")
+        check("source 标记降级链路", d.get("source") == "mock", d.get("source"))
+
+        # 资料页：应用回答（只增补）
+        before_exp = client.get("/api/profile").json()["experiences"][0]
+        n_before = len(before_exp.get("achievements") or [])
+        r = client.post("/api/profile/interview/apply", json={"answers": [
+            {"id": "q1", "topic": "K8s", "question": "K8s 经验？",
+             "answer": "在 ACME 用 Docker 做容器化，了解 K8s 的 Pod/Service/Deployment"}]})
+        check("应用回答 -> 200", r.status_code == 200, r.status_code)
+        after = client.get("/api/profile").json()
+        n_after = len((after["experiences"][0].get("achievements") or []))
+        check("回答被增补进资料（只增不删）", n_after > n_before, f"{n_before} -> {n_after}")
+        check("原有真实信息未被覆盖", after["experiences"][0].get("company") == "ACME",
+              after["experiences"][0].get("company"))
+        check("空回答不改变资料",
+              client.post("/api/profile/interview/apply", json={"answers": []}).json()["experiences"][0]["company"] == "ACME")
+
+        # 工作区：无 JD -> 400
+        cid2 = client.post("/api/chats", json={"title": "问答回归"}).json()["id"]
+        r = client.post(f"/api/chats/{cid2}/interview")
+        check("工作区无 JD 问答 -> 400", r.status_code == 400, r.status_code)
+
+        # 工作区：有 JD -> 出题（缺口应命中资料没有的要求）
+        client.post(f"/api/chats/{cid2}/messages", json={"kind": "jd", "content":
+            "Requirements\n- Kubernetes production experience\n- 3 years JavaScript"})
+        r = client.post(f"/api/chats/{cid2}/interview")
+        check("工作区问答 -> 200", r.status_code == 200, r.status_code)
+        d2 = r.json()
+        check("缺口问题非空", len(d2.get("questions") or []) > 0, f"{len(d2.get('questions') or [])} 张")
+        check("缺口用 mock 且带 gaps", d2.get("source") == "mock" and len(d2.get("gaps") or []) > 0,
+              f"gaps={len(d2.get('gaps') or [])}")
+
+        # 提交（不自动生成）
+        r = client.post(f"/api/chats/{cid2}/interview/submit", json={
+            "answers": [{"id": "q1", "topic": "K8s", "question": "K8s?", "answer": "了解声明式编排"}],
+            "auto_generate": False})
+        check("提交问答 -> 200", r.status_code == 200, r.status_code)
+        check("提交后标记快照已定制", r.json().get("profile_dirty") is True, r.json().get("profile_dirty"))
+        detail = client.get(f"/api/chats/{cid2}").json()
+        check("问答记录进对话消息", any(m.get("kind") == "guidance" for m in detail.get("messages") or []),
+              len(detail.get("messages") or []))
+
+        # 空回答 = 跳过全部，仍可提交
+        r = client.post(f"/api/chats/{cid2}/interview/submit",
+                        json={"answers": [], "auto_generate": False})
+        check("全空回答（跳过）也能提交", r.status_code == 200, r.status_code)
+
+        # auto_generate=True -> 进入排队/生成
+        r = client.post(f"/api/chats/{cid2}/interview/submit",
+                        json={"answers": [], "auto_generate": True})
+        check("提交并自动生成 -> 进入排队态", r.status_code == 200 and r.json().get("status") in ("queued", "running"),
+              r.json().get("status"))
+        # 等它跑完再清理，避免影响后续用例
+        for _ in range(60):
+            if client.get(f"/api/chats/{cid2}").json()["status"] in ("succeeded", "failed", "cancelled"):
+                break
+            time.sleep(0.3)
+        client.delete(f"/api/chats/{cid2}?cascade=true")
+
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:
         print("存在失败用例 ❌")

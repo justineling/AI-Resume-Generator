@@ -7,8 +7,15 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..llm import build_client
 from ..models import Profile
-from ..schemas import ProfileIn, ProfileOut
+from ..schemas import (
+    InterviewAnswersIn,
+    InterviewQuestionsOut,
+    ProfileIn,
+    ProfileInterviewIn,
+    ProfileOut,
+)
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
@@ -33,6 +40,55 @@ def update_profile(payload: ProfileIn, session: Session = Depends(get_session)) 
     p = _get_or_create(session)
     for field, value in payload.model_dump().items():
         setattr(p, field, value)
+    p.updated_at = datetime.now()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p
+
+
+# --------------------------------------------------------------------------- #
+# AI 面试问答（flashcard）：让资料更专业、更具体
+# --------------------------------------------------------------------------- #
+def _profile_dict(p: Profile) -> dict:
+    return {k: getattr(p, k) for k in (
+        "name", "headline", "email", "phone", "location", "age", "avatar", "summary",
+        "links", "education", "experiences", "projects", "skills",
+        "certificates", "languages", "awards",
+    )}
+
+
+@router.post("/interview", response_model=InterviewQuestionsOut)
+async def profile_interview(
+    payload: ProfileInterviewIn, session: Session = Depends(get_session)
+) -> InterviewQuestionsOut:
+    """生成一组 flashcard 问题，帮助把资料写得更专业、更具体。
+
+    focus 可用于引导方向（例如「前端」）。
+    """
+    from ..interview import generate_questions
+
+    p = _get_or_create(session)
+    prof = _profile_dict(p)
+    focus = (payload.focus or "").strip()
+    analysis = {"requirements": [{"id": "F1", "kind": "must_have", "text": focus}]} if focus else None
+    result = await generate_questions(prof, analysis, build_client(session))
+    return InterviewQuestionsOut(**result)
+
+
+@router.post("/interview/apply", response_model=ProfileOut)
+async def profile_interview_apply(
+    payload: InterviewAnswersIn, session: Session = Depends(get_session)
+) -> Profile:
+    """把用户的补充回答整合进全局资料（只增补，不覆盖原有真实信息）。"""
+    from ..interview import apply_answers
+
+    p = _get_or_create(session)
+    answers = [a.model_dump() for a in payload.answers]
+    merged = await apply_answers(_profile_dict(p), answers, build_client(session), for_chat=False)
+    for field, value in merged.items():
+        if hasattr(p, field):
+            setattr(p, field, value)
     p.updated_at = datetime.now()
     session.add(p)
     session.commit()

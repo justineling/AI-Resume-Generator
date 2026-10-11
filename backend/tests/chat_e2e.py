@@ -124,8 +124,15 @@ def main() -> int:
         check("填好后生成按钮可用",
               page.get_attribute("#btn-chat-generate", "disabled") is None)
 
-        print("\n=== 4. 生成简历（先保存有变化的字段，再生成）===")
+        print("\n=== 4. 生成简历（保存字段 → 生成前 AI 问答 → 生成）===")
         page.click("#btn-chat-generate")
+        # 流程变更：点「生成简历」后，若资料对岗位有缺口会先弹 AI 问答卡。
+        # 本脚本不测问答细节，出现弹窗即点「跳过，直接生成」，继续走原生成流程。
+        try:
+            page.wait_for_selector("#interview-dialog[open]", timeout=6000)
+            page.click("#iv-skip-all")
+        except Exception:
+            pass  # 资料已足够完善时不会弹窗，直接生成
         page.wait_for_selector('#ws-status[data-status="succeeded"]', timeout=45000)
         page.wait_for_timeout(400)
         check("状态为已完成",

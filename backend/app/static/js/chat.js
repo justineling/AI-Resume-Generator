@@ -2,6 +2,7 @@
 // 单一状态所有者：本模块持有 chats / currentChat / messages，WebSocket 事件在此收敛。
 import { api } from "./api.js";
 import { $, el, toast, fmtTime, statusLabel } from "./ui.js";
+import { openInterview } from "./interview.js";
 
 let chats = new Map();      // id -> chat 摘要（列表接口返回，无 messages）
 let currentId = null;       // 当前打开的 chat id
@@ -395,7 +396,7 @@ async function newChat() {
   }
 }
 
-// 生成主流程：先保存有变化的字段，再触发生成
+// 生成主流程：保存有变化的字段 → 生成前 AI 问答（有缺口才弹）→ 触发生成
 async function generateChat() {
   if (!currentId) return;
   const c = currentChat;
@@ -415,12 +416,16 @@ async function generateChat() {
   }
 
   const btn = $("#btn-chat-generate");
+  // 统一解除 busy：清掉标记后由 updateComposerState 依据真实状态收尾，避免按钮卡在 loading
+  const finishBusy = () => { delete btn.dataset.busy; updateComposerState(); };
+
   btn.dataset.busy = "1";
   btn.disabled = true;
   btn.textContent = "保存中…";
   status.classList.remove("is-error");
+
+  // 1) 保存有变化的字段（职位名称 PATCH / 岗位要求 POST）
   try {
-    // 1) 职位名称有变化 -> PATCH
     if (titleVal !== savedTitle) {
       const updated = await api.patchChat(currentId, { title: titleVal });
       savedTitle = titleVal;
@@ -429,41 +434,109 @@ async function generateChat() {
       renderList();
       $("#ws-title").textContent = updated.title || `对话 #${currentId}`;
     }
-    // 2) 岗位要求有变化 -> POST（kind=jd，会同步写 raw_text）
     if (reqVal !== savedReq.trim()) {
       const msg = await api.postChatMessage(currentId, { kind: "jd", content: reqVal });
       savedReq = reqVal;
       upsertMessage(msg);
       renderStream();
     }
-    // 3) 触发生成（接口返回最新 ChatOut，直接采用以立即进入「生成中」态）
-    btn.textContent = "生成中…";
-    const out = await api.generateChat(currentId);
-    currentChat = { ...currentChat, ...out };
-    chats.set(currentId, { ...(chats.get(currentId) || {}), ...out });
-    genStartMs = 0;   // 让 renderHead 依据 started_at / 当前时间重新起表
-    renderList();
-    renderHead();
-    toast("已加入队列，正在生成…", "ok");
   } catch (err) {
-    delete btn.dataset.busy;
-    updateComposerState();   // 恢复按钮文案与可用态
-    if (err.status === 400) {
-      status.textContent = err.message;
-      status.classList.add("is-error");
-      toast(err.message, "warn", 5000);
-    } else if (err.status === 409) {
-      toast("正在生成中，请稍候", "warn");
-    } else {
-      status.textContent = `生成失败：${err.message}`;
-      status.classList.add("is-error");
-      toast(`生成失败：${err.message}`, "err");
-    }
+    finishBusy();
+    reportGenerateError(err, status);
     return;
   }
-  delete btn.dataset.busy;
-  // 生成成功后由 WebSocket / 轮询刷新状态，这里先同步按钮态
-  updateComposerState();
+
+  // 2) 生成前先问「岗位需要但资料缺依据」的点
+  btn.textContent = "准备问答…";
+  let iv;
+  try {
+    iv = await api.chatInterview(currentId);
+  } catch (err) {
+    finishBusy();
+    reportGenerateError(err, status);
+    return;
+  }
+
+  const questions = (iv && Array.isArray(iv.questions)) ? iv.questions : [];
+  const gaps = (iv && Array.isArray(iv.gaps)) ? iv.gaps : [];
+
+  // 无缺口 -> 直接生成
+  if (!questions.length) {
+    await startGenerate(btn, status, finishBusy);
+    return;
+  }
+
+  // 3) 有缺口 -> 弹 flashcard（保持 busy，按钮不卡在 loading）
+  btn.textContent = "等待回答…";
+  status.classList.add("is-busy");
+  status.textContent = `生成前先补充：${questions.length} 个问题待回答`;
+  openInterview({
+    title: "生成前补充资料",
+    questions,
+    gaps,
+    skipLabel: "跳过，直接生成",
+    onSubmit: (answers) => submitInterview(answers, btn, status, finishBusy),
+    onSkip: () => submitInterview([], btn, status, finishBusy),
+    // Esc / 关闭：取消本次生成，恢复按钮（用户可稍后再点「生成简历」）
+    onCancel: () => {
+      finishBusy();
+      status.classList.remove("is-busy");
+      status.textContent = "已取消补充，未开始生成。";
+    },
+  });
+}
+
+// 提交问答（auto_generate=true）并进入生成态
+async function submitInterview(answers, btn, status, finishBusy) {
+  let out;
+  try {
+    out = await api.chatInterviewSubmit(currentId, answers, true);
+  } catch (err) {
+    reportGenerateError(err, status);
+    throw err; // 交给弹窗保持打开，便于重试 / 跳过
+  }
+  currentChat = { ...currentChat, ...out };
+  chats.set(currentId, { ...(chats.get(currentId) || {}), ...out });
+  genStartMs = 0;   // 让 renderHead 依据 started_at / 当前时间重新起表
+  finishBusy();
+  renderList();
+  renderHead();
+  toast(answers.length ? "已提交补充并开始生成…" : "已跳过补充，开始生成…", "ok");
+}
+
+// 直接触发后端生成（无缺口时）
+async function startGenerate(btn, status, finishBusy) {
+  btn.textContent = "生成中…";
+  let out;
+  try {
+    out = await api.generateChat(currentId);
+  } catch (err) {
+    finishBusy();
+    reportGenerateError(err, status);
+    return;
+  }
+  currentChat = { ...currentChat, ...out };
+  chats.set(currentId, { ...(chats.get(currentId) || {}), ...out });
+  genStartMs = 0;
+  finishBusy();
+  renderList();
+  renderHead();
+  toast("已加入队列，正在生成…", "ok");
+}
+
+// 生成链路的错误提示（400 缺岗位要求 / 409 正在生成 / 其它）
+function reportGenerateError(err, status) {
+  if (err.status === 400) {
+    status.textContent = err.message;
+    status.classList.add("is-error");
+    toast(err.message, "warn", 5000);
+  } else if (err.status === 409) {
+    toast("正在生成中，请稍候", "warn");
+  } else {
+    status.textContent = `生成失败：${err.message}`;
+    status.classList.add("is-error");
+    toast(`生成失败：${err.message}`, "err");
+  }
 }
 
 async function cancelChat() {

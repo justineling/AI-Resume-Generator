@@ -1,6 +1,7 @@
 // 01 资料库：表单 + 可重复条目 + 头像 + 导入导出
 import { api } from "./api.js";
 import { $, el, toast, fmtTime } from "./ui.js";
+import { openInterview } from "./interview.js";
 
 // 每个可重复条目的字段定义（type: text | textarea | lines | csv）
 const REPEATERS = {
@@ -97,6 +98,9 @@ export async function initProfile() {
   // 保存
   $("#btn-save-profile").addEventListener("click", saveProfile);
 
+  // 让 AI 帮我完善（问答 flashcard）
+  $("#btn-profile-ai").addEventListener("click", runInterview);
+
   // 导入导出
   $("#btn-export-profile").addEventListener("click", exportProfile);
   $("#pf-import-file").addEventListener("change", importProfile);
@@ -107,19 +111,56 @@ export async function initProfile() {
 async function loadProfile() {
   try {
     const p = await api.getProfile();
-    state = { ...p, avatar: p.avatar || "" };
-    for (const [key, id] of Object.entries(SCALARS)) {
-      const node = document.getElementById(id);
-      if (node) node.value = p[key] ?? "";
-    }
-    for (const name of Object.keys(REPEATERS)) {
-      state[name] = Array.isArray(p[name]) ? p[name] : [];
-      renderRepeater(name);
-    }
-    paintAvatar();
+    applyProfileData(p);
     setState(`已载入 · ${fmtTime(p.updated_at)}`);
   } catch (err) {
     toast(`载入资料失败：${err.message}`, "err");
+  }
+}
+
+// 用一份 profile 对象回填全部表单字段（载入 / 问答补充后刷新共用）
+function applyProfileData(p) {
+  state = { ...p, avatar: p.avatar || "" };
+  for (const [key, id] of Object.entries(SCALARS)) {
+    const node = document.getElementById(id);
+    if (node) node.value = p[key] ?? "";
+  }
+  for (const name of Object.keys(REPEATERS)) {
+    state[name] = Array.isArray(p[name]) ? p[name] : [];
+    renderRepeater(name);
+  }
+  paintAvatar();
+}
+
+// 「让 AI 帮我完善」：生成问题 -> flashcard -> 提交并刷新资料
+async function runInterview() {
+  const btn = $("#btn-profile-ai");
+  btn.disabled = true;
+  try {
+    const out = await api.profileInterview("");
+    const questions = (out && out.questions) || [];
+    if (!questions.length) {
+      toast("资料已经比较完整，暂无需补充", "ok");
+      return;
+    }
+    openInterview({
+      title: "让 AI 帮我完善资料",
+      questions,
+      gaps: (out && out.gaps) || [],
+      skipLabel: "暂不需要",
+      onSubmit: async (answers) => {
+        const saved = await api.profileInterviewApply(answers);
+        applyProfileData(saved);
+        setState(`已更新 · ${fmtTime(saved.updated_at)}`);
+        toast("已根据你的补充更新资料", "ok");
+      },
+      onSkip: () => {},   // 「暂不需要」= 直接关闭，不发请求
+      onCancel: () => {}, // Esc = 取消，同样不发请求
+    });
+  } catch (err) {
+    toast(`生成问题失败：${err.message}`, "err");
+  } finally {
+    btn.disabled = false;
   }
 }
 

@@ -101,6 +101,12 @@ def main() -> int:
 
         # ---------- 05 生成完成 ----------
         page.click("#btn-chat-generate")
+        # 流程变更：生成前若有岗位缺口会先弹 AI 问答卡；出现即点「跳过，直接生成」。
+        try:
+            page.wait_for_selector("#interview-dialog[open]", timeout=6000)
+            page.click("#iv-skip-all")
+        except Exception:
+            pass
         page.wait_for_selector('#ws-status[data-status="succeeded"]', timeout=45000)
         page.wait_for_timeout(500)
         page.screenshot(path=str(OUT / "05-chat-done.png"))

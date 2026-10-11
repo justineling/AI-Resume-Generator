@@ -355,6 +355,11 @@ html, body { overflow-x: hidden; }
   position: absolute; right: 0; bottom: 0;
   width: 140px; height: 2px; background: var(--signal);
 }
+/* 视图头部操作区：与 kicker/title/lede 同为一列，靠右不溢出 */
+.view-head-actions {
+  display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px;
+}
 
 /* ============================ 面板 ============================ */
 .panel-grid {
@@ -679,6 +684,55 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .dialog-head h2 { margin: 4px 0 0; font-size: 17px; }
 .dialog-wide { width: min(760px, 94vw); }
 
+/* ---------------------------- AI 问答（flashcard） ---------------------------- */
+.dialog-iv { width: min(720px, 94vw); overflow-y: auto; }
+.iv-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.iv-head-main { display: flex; flex-direction: column; min-width: 0; }
+.iv-head h2 { margin: 4px 0 0; font-size: 17px; }
+.iv-progress {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: 0.1em; color: var(--fg-dim); white-space: nowrap;
+}
+
+.iv-gaps {
+  border: 1px solid var(--rule); border-left: 2px solid var(--warn);
+  background: var(--signal-tint); color: var(--fg-dim);
+  padding: 9px 12px; font-size: 12px;
+}
+.iv-gaps-lead { margin: 0; color: var(--fg); }
+.iv-gaps ul { margin: 6px 0 0; padding-left: 18px; }
+.iv-gaps li { margin: 2px 0; }
+
+.iv-card {
+  margin-top: 14px; border: 1px solid var(--rule);
+  background: var(--tint-soft); padding: 14px 15px;
+}
+.iv-topic {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--signal);
+}
+.iv-question { margin: 7px 0 0; font-size: 17px; line-height: 1.5; font-weight: 700; color: var(--fg); }
+.iv-hint { margin: 7px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--muted); }
+.iv-answer { margin-top: 12px; min-height: 96px; }
+
+.iv-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.iv-dot {
+  appearance: none; width: 14px; height: 14px; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid var(--rule-strong);
+  transition: all var(--t-direct) var(--ease);
+}
+.iv-dot:hover { border-color: var(--fg-dim); }
+.iv-dot.is-done { background: var(--state); border-color: var(--state); }
+.iv-dot.is-current { border: 2px solid var(--signal); background: var(--signal-tint-strong); }
+.iv-dot.is-current.is-done { background: var(--state); border-color: var(--signal); }
+.iv-dot:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.iv-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule);
+}
+.iv-foot .spacer { flex: 1 1 auto; }
+
 /* 保证 hidden 属性始终生效（.field 的 display:flex 会覆盖 UA 的 [hidden] 规则） */
 [hidden] { display: none !important; }
 
@@ -917,6 +971,17 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
   .studio-toolbar { flex-direction: column; align-items: stretch; }
   .studio-actions { margin-left: 0; }
   .footer { flex-direction: column; gap: 2px; padding: 8px 16px; }
+  /* 问答弹窗：卡片撑满，页脚按钮换行不溢出 */
+  .dialog-iv { width: 94vw; }
+  .iv-head { gap: 8px; }
+  .iv-progress { margin-left: 0; }
+  .iv-head .btn { margin-left: auto; }
+  .iv-card { padding: 12px; }
+  .iv-question { font-size: 15.5px; }
+  .iv-answer { min-height: 84px; }
+  .iv-foot { gap: 8px; }
+  .iv-foot .spacer { display: none; }
+  .iv-foot .btn { flex: 1 1 auto; }
 }
 
 
