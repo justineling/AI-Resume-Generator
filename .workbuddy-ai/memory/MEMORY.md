@@ -144,6 +144,9 @@
   实测单日曾写入 200+ 条测试对话（`慢任务`/`occ0`/`queued`/`空资料任务` 等标题）。
 - 进程内测试（regression/smoke/xss/progress）用 `DATABASE_URL` 指向隔离库。
 - **验证隔离是否生效**：跑测试前后对比 `select count(*) from chat` 应完全一致。
+- **清理用户库里的测试数据时，走 API 级联删除**（`DELETE /api/chats/{id}?cascade=true`），
+  **不要直接删 SQL** —— API 会连带清理 ChatMessage / Resume / EditLog，不留孤儿记录。
+  删完用「orphan 检查」验证：`select count(*) from chatmessage where chat_id not in (select id from chat)`。
 - 注意 `ui_check.py` 末尾用 `os._exit()`（跳过 with/finally），必须在退出前显式
   `stop_isolated_server()`；其他脚本可用 `with isolated_server(...)`。
 
