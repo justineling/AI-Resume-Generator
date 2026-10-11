@@ -137,6 +137,44 @@ function paintKeyStatus(s) {
   }
 }
 
+
+// --------------------------------------------------------------------------- //
+// 颜色模式（深色 / 浅色 / 跟随系统）
+// 纯前端偏好，存 localStorage（index.html 的早期脚本会在首帧前同步应用一次）
+// --------------------------------------------------------------------------- //
+const THEME_KEY = "arg.theme";
+
+function currentTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) || "dark";
+  } catch (e) {
+    return "dark";
+  }
+}
+
+function systemPrefersLight() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+}
+
+function applyTheme(mode) {
+  const m = mode || "dark";
+  const eff = m === "auto" ? (systemPrefersLight() ? "light" : "dark") : m;
+  document.documentElement.setAttribute("data-theme", eff === "light" ? "light" : "dark");
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  if (meta) meta.setAttribute("content", eff === "light" ? "light dark" : "dark light");
+  try {
+    localStorage.setItem(THEME_KEY, m);
+  } catch (e) { /* 隐私模式下忽略 */ }
+}
+
+// 跟随系统时，系统切换要立即生效
+if (window.matchMedia) {
+  const mq = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = () => { if (currentTheme() === "auto") applyTheme("auto"); };
+  if (mq.addEventListener) mq.addEventListener("change", onChange);
+  else if (mq.addListener) mq.addListener(onChange);
+}
+
 function applyProvider(providerId, opts = {}) {
   const p = providerById(providerId);
   const editable = !!(p && p.editable_base_url);
@@ -185,6 +223,7 @@ async function openSettings() {
     });
     // 0 表示「不限制」——必须原样显示为 0，不能被当成空值
     $("#cfg-max-tokens").value = s.max_tokens ?? 0;
+    $("#cfg-theme").value = currentTheme();
     $("#cfg-key").value = "";
     $("#cfg-key").placeholder = s.has_key ? "已配置，留空保持不变" : "留空则使用降级模式";
     paintKeyStatus(s);
@@ -267,6 +306,8 @@ async function boot() {
   $("#btn-save-settings").addEventListener("click", saveSettings);
   $("#btn-test").addEventListener("click", testConnection);
   $("#cfg-provider").addEventListener("change", () => applyProvider($("#cfg-provider").value, {}));
+  // 颜色模式：切换立即生效（不依赖「保存设置」，所见即所得）
+  $("#cfg-theme").addEventListener("change", () => applyTheme($("#cfg-theme").value));
   $("#cfg-model-select").addEventListener("change", syncCustomModelField);
   $("#cfg-model-custom").addEventListener("input", () => setTestResult("", ""));
 
@@ -278,6 +319,9 @@ async function boot() {
 
   // 简历空状态 -> 去工作区生成
   $("#btn-studio-goto-workspace").addEventListener("click", () => switchView("workspace"));
+
+  // 颜色模式兜底应用（index.html 早期脚本已做，此处保证 JS 状态一致）
+  applyTheme(currentTheme());
 
   // 模块初始化
   await initProfile();

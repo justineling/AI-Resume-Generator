@@ -3,10 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="dark light" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=5" />
+  <link rel="stylesheet" href="/static/css/app.css?v=6" />
+  <script>
+    /* 在首帧之前套用已保存的颜色模式，避免先闪一下深色再切浅色 */
+    (function () {
+      try {
+        var mode = localStorage.getItem("arg.theme") || "dark";
+        var eff = mode === "auto"
+          ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+          : mode;
+        document.documentElement.setAttribute("data-theme", eff === "light" ? "light" : "dark");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主内容</a>
@@ -383,6 +397,14 @@
           <input id="cfg-model-custom" type="text" autocomplete="off" spellcheck="false" placeholder="如 deepseek-chat" />
         </label>
         <p class="provider-note field-span2" id="cfg-note"></p>
+        <label class="field"><span>颜色模式</span>
+          <select id="cfg-theme" aria-label="颜色模式" aria-describedby="cfg-theme-hint">
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+            <option value="auto">跟随系统</option>
+          </select>
+          <small class="field-hint" id="cfg-theme-hint">浅色沿用同一套设计语言（方角、青色信号、1px 细线），仅替换配色</small>
+        </label>
         <label class="field"><span>最大输出 token</span>
           <input id="cfg-max-tokens" type="number" min="0" step="1" inputmode="numeric" aria-describedby="cfg-max-tokens-hint" />
           <small class="field-hint" id="cfg-max-tokens-hint">0 = 不限制（由模型服务端决定），默认 0</small>

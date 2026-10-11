@@ -105,6 +105,18 @@
 `POST /api/settings/llm/test` 未填 key 时**回落到已存储 key**（仅同供应商；custom 需 base_url 一致），
 用户无需重新输入即可测试连接。
 
+## 招聘网页抓取（app/fetch.py）
+- **必须带完整浏览器头**：只带 `User-Agent` 会被 JobStreet 等站点判为爬虫返回 **403**；补齐 `Accept / sec-ch-ua / sec-fetch-* / 同源 Referer` 后实测 200。见 `fetch.BROWSER_HEADERS`。
+- `validate_url` 必须**先显式拒绝非 http(s) 协议**再补 `https://` 前缀，否则 `file://x` 会被盲加前缀放行。
+- 静态抓取不执行 JS；前端渲染的站点会提示改手动复制（已知限制，非缺陷）。
+- `fetch_url_text` / `extract_jd_from_text` 均为 **async**（`extract_jd_from_text` 内部 await `chat_json`）。
+  测试 mock 也必须是 async 函数；**协议校验用例不能 mock 掉 `fetch_url_text`**，否则绕过校验。
+
+## 响应式布局（踩过的坑）
+- `.panel-head` 一类横向排布必须加 `flex-wrap`，否则窄栏里按钮会溢出边框；按钮组应包进 `.head-actions{margin-left:auto; flex-wrap:wrap}`。
+- **改 `grid-template-areas` 时不能漏区域**：760 断点曾漏掉 `foot`，导致 `footer` 被隐式放置、撑出额外列宽（375px 下文档宽 491）。
+- 验证溢出要用按钮往上定位（`btn.parentElement.closest('.panel-head')`）——直接 `querySelector('.panel-head')` 可能命中隐藏视图中 rect 为 0 的元素，造成误判。
+
 ## 本机环境坑（重要）
 **本机设了 `http_proxy`，代理会拦截 localhost 请求并返回 502。**
 - curl 加 `--noproxy '*'`；httpx 用 `trust_env=False` 或设 `NO_PROXY=localhost,127.0.0.1`
