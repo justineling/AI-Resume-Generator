@@ -1236,6 +1236,18 @@ def main() -> int:
             check("导入 -> profile_snapshot 已快照", bool(body.get("profile_snapshot")))
             client.delete(f"/api/chats/{body['id']}?cascade=true")
 
+            # auto_generate 不得绕过「生成前 AI 问答」：导入后应保持 draft，
+            # 生成由前端在导入完成后触发完整流程（含 flashcard）。
+            async def _fetch_ok(u):
+                return dict(PAGE)
+            fetchmod.fetch_url_text = _fetch_ok
+            fetchmod.extract_jd_from_text = _fake_extract
+            r = client.post("/api/chats/import-url",
+                            json={"url": "https://jobs.example.com/job/2", "auto_generate": True})
+            check("导入 auto_generate=true 不直接入队（保持 draft）",
+                  r.status_code == 201 and r.json()["status"] == "draft", r.json().get("status"))
+            client.delete(f"/api/chats/{r.json()['id']}?cascade=true")
+
             # 协议校验：file:// -> 422（走真实 validate_url，不做网络请求即拒绝）
             fetchmod.fetch_url_text = orig_fetch
             r = client.post("/api/chats/import-url", json={"url": "file:///etc/passwd"})

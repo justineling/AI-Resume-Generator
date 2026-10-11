@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8010")
+BASE = (os.environ.get("BASE_URL") or "").strip()  # 为空则自起隔离服务
 SHOTS = Path(__file__).resolve().parent / "shots"
 SHOTS.mkdir(parents=True, exist_ok=True)
 
@@ -59,12 +59,12 @@ JD = (
 )
 
 
-def main() -> int:
-    c = httpx.Client(base_url=BASE, timeout=60)
+def _run(base: str) -> int:
+    c = httpx.Client(base_url=base, timeout=60)
     try:
         c.get("/api/health")
     except Exception as exc:  # pragma: no cover
-        print(f"无法连接 {BASE}，请先启动服务。({exc})")
+        print(f"无法连接 {base}，请先启动服务。({exc})")
         return 2
 
     # 落全局资料，确保有素材（summary 留空、achievements 为空 -> 会出问题）
@@ -81,7 +81,7 @@ def main() -> int:
                 if m.type in ("error", "warning") else None)
         page.on("pageerror", lambda e: console.append(f"pageerror: {e}"))
 
-        page.goto(BASE, wait_until="load")
+        page.goto(base, wait_until="load")
         page.wait_for_selector("#chat-list", timeout=15000)
         page.wait_for_timeout(400)
 
@@ -258,6 +258,20 @@ def main() -> int:
             print("  -", x)
     sys.stdout.flush()
     return 1 if BAD else 0
+
+
+def main() -> int:
+    """默认自起隔离服务；显式设置 BASE_URL 时才用外部服务。
+
+    此前默认打 8010/8000 的外部服务，容易误连用户真实库。
+    """
+    explicit = (os.environ.get("BASE_URL") or "").strip()
+    if explicit:
+        print(f"[外部服务] {explicit} —— 若指向 8000，测试数据会写入用户真实库")
+        return _run(explicit)
+    from _ui_server import isolated_server
+    with isolated_server("iv_check", 8126) as base:
+        return _run(base)
 
 
 if __name__ == "__main__":

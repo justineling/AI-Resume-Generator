@@ -198,8 +198,9 @@ async def import_chat_from_url(
     session.add(chat)
     session.commit()
 
-    if payload.auto_generate:
-        await scheduler.enqueue(chat.id)
+    # 这里**不直接入队**：生成前需要插入「AI 问答」步骤（flashcard），
+    # 由前端在导入完成后调用完整的生成流程（与手动点「生成简历」同一条路径）。
+    # 若在此直接 enqueue，会绕过问答步骤 —— auto_generate 仅作为前端的行为提示。
 
     out = _chat_out(chat, session)
     out.extracted_title = job_title[:120]

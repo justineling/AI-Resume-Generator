@@ -428,7 +428,10 @@ html, body { overflow-x: hidden; }
 }
 .field-block { margin-bottom: 12px; }
 
-input[type="text"], input[type="number"], input[type="password"], select, textarea {
+/* 用「排除法」覆盖所有文本类输入：此前只列了 text/number/password，
+   导致 type="url"（招聘链接输入框）完全没有样式——深色下文字与底色撞色看不清。 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+select, textarea {
   width: 100%;
   background: var(--ink);
   border: 1px solid var(--rule-strong);
@@ -946,7 +949,9 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
   .head-actions { width: 100%; justify-content: flex-end; margin-left: 0; }
   .panel-head .spacer { display: none; }
   .btn-sm { padding: 6px 9px; font-size: 11px; }
-  .import-box { padding: 10px; }
+  .import-box { padding: 0; }
+  .import-head, .import-field, .import-foot { padding-left: 10px; padding-right: 10px; }
+  .import-hint, .import-box .test-result { margin-left: 10px; margin-right: 10px; }
   .import-box .action-bar { flex-wrap: wrap; }
   .topbar { gap: 10px; padding: 0 12px; }
   .wordmark-text small { display: none; }
@@ -986,14 +991,66 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
 
 
 /* ---- API Key 状态条 ---- */
-.key-status{font-family:var(--mono); font-size:11px; letter-spacing:.04em; padding:6px 9px; border:1px solid var(--rule); margin:0 0 8px;}
+.key-status{font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; padding:6px 9px; border:1px solid var(--rule); margin:0 0 8px;}
 .key-status.is-ok{border-color:var(--state); background:var(--state-tint); color:var(--state);}
 .key-status.is-missing{border-color:var(--signal-tint-strong); background:var(--signal-tint); color:var(--signal);}
 
 /* ---- 从链接导入 ---- */
-.import-box{border:1px solid var(--rule); background:var(--signal-tint); padding:12px; margin:0 0 10px; display:flex; flex-direction:column; gap:8px;}
-.import-box .field span{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--muted);}
-.import-box .action-bar{display:flex; align-items:center; gap:8px;}
-.check-inline{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text); cursor:pointer;}
-.check-inline input{accent-color:var(--signal); width:auto;}
+/* ---- 从链接导入（Ark 风格：方角 / 1px 线 / 等宽 / 青色信号） ---- */
+.import-box{
+  border:1px solid var(--rule-strong); background:var(--signal-tint);
+  margin:0 0 10px; padding:0; display:flex; flex-direction:column;
+  /* 左侧信号色竖条，与面板头部呼应 */
+  border-left:2px solid var(--signal);
+}
+.import-head{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:9px 12px; border-bottom:1px solid var(--rule);
+  background:var(--tint-soft);
+}
+.import-head h3{
+  margin:0; font-size:12.5px; font-weight:700; letter-spacing:.02em; color:var(--fg);
+}
+/* 用 CSS 画一个「链接」标记，避免引入 emoji / 图标字体 */
+.import-mark{
+  width:12px; height:12px; flex:0 0 auto; position:relative;
+  border:1.5px solid var(--signal); border-radius:var(--radius);
+}
+.import-mark::after{
+  content:""; position:absolute; left:3px; top:3px; width:6px; height:6px;
+  background:var(--signal); opacity:.55;
+}
+.import-code{
+  margin-left:auto; font-family:var(--font-mono); font-size:9.5px;
+  letter-spacing:.14em; color:var(--signal); white-space:nowrap;
+}
+.import-field{ padding:12px 12px 0; }
+.import-field > span{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.import-input-row{ display:flex; align-items:center; }
+/* URL 属技术信息：用等宽字体，并加大内边距便于阅读 */
+.import-box #import-url-input{
+  font-family:var(--font-mono); font-size:12.5px; padding:10px 12px;
+  background:var(--surface); border-color:var(--rule-strong); color:var(--fg);
+}
+.import-box #import-url-input::placeholder{ color:var(--muted); font-family:var(--font-mono); }
+.import-box #import-url-input:focus{
+  outline:none; border-color:var(--signal); background:var(--ink);
+  box-shadow:inset 2px 0 0 var(--signal);
+}
+.import-hint{
+  margin:9px 12px 0; font-size:11.5px; line-height:1.65; color:var(--muted);
+}
+.import-hint strong{ color:var(--fg-dim); font-weight:600; }
+.import-box .test-result{ margin:8px 12px 0; }
+.import-foot{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 12px 12px; margin-top:10px; border-top:1px solid var(--rule);
+}
+.import-actions{ display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; }
+
+.check-inline{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--fg); cursor:pointer;}
+.check-inline input{accent-color:var(--signal); width:auto; flex:0 0 auto;}
 .empty-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}

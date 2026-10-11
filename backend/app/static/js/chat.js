@@ -60,22 +60,26 @@ export function initChat({ openResume, switchView: switchTo }) {
     importStatus.className = "test-result is-pending";
     importStatus.textContent = "正在抓取网页并识别职位信息…";
     try {
-      const chat = await api.importFromUrl(url, auto);
+      // 生成一律交给 generateChat()：它会在生成前先做 AI 问答（flashcard），
+      // 因此这里固定传 false，避免后端直接入队绕过问答步骤。
+      const chat = await api.importFromUrl(url, false);
       importBox.hidden = true;
       await refreshChats();
       await openChat(chat.id);
-      toast(
-        chat.raw_text
-          ? "已从链接导入职位信息，请核对无误后点「生成简历」"
-          : "已创建对话，但未能识别岗位要求，请手动补充",
-        chat.raw_text ? "ok" : "err",
-      );
+      if (!chat.raw_text) {
+        toast("已创建对话，但未能识别岗位要求，请手动补充", "err");
+      } else if (auto) {
+        toast("已导入职位信息，正在准备生成前的问题…", "ok");
+        await generateChat();   // 与手动点「生成简历」完全同一条路径
+      } else {
+        toast("已从链接导入职位信息，请核对无误后点「生成简历」", "ok");
+      }
     } catch (err) {
       importStatus.className = "test-result is-err";
       importStatus.textContent = `导入失败：${err.message}`;
     } finally {
       btn.disabled = false;
-      btn.textContent = "导入";
+      btn.textContent = "开始导入";
     }
   });
 

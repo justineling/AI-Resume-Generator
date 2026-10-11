@@ -175,20 +175,36 @@
                 <button class="btn btn-primary btn-sm" type="button" id="btn-new-chat">＋ 新建</button>
               </div>
             </div>
-            <div class="import-box" id="import-url-box" hidden>
-              <label class="field"><span>招聘页面链接</span>
-                <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-                       placeholder="https://…/job/12345" aria-describedby="import-url-hint" />
+            <section class="import-box" id="import-url-box" hidden aria-labelledby="import-box-title">
+              <header class="import-head">
+                <span class="import-mark" aria-hidden="true"></span>
+                <h3 id="import-box-title">从招聘链接导入</h3>
+                <span class="import-code">URL-01</span>
+              </header>
+              <label class="field import-field">
+                <span>招聘页面链接</span>
+                <div class="import-input-row">
+                  <input id="import-url-input" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                         placeholder="https://my.jobstreet.com/job/12345678"
+                         aria-describedby="import-url-hint" />
+                </div>
               </label>
-              <p class="hint" id="import-url-hint">将自动抓取网页并识别职位名称与岗位要求，填入一个新对话；导入后请核对内容再生成。</p>
+              <p class="import-hint" id="import-url-hint">
+                粘贴职位详情页链接，系统会抓取页面并识别<strong>职位名称</strong>与<strong>岗位要求</strong>，
+                填入一个新对话。仅支持 http(s)，抓取超时 20 秒。
+              </p>
               <p class="test-result" id="import-url-status" role="status" aria-live="polite"></p>
-              <div class="action-bar">
-                <label class="check-inline"><input type="checkbox" id="import-auto-generate" /> 导入后自动生成简历</label>
-                <span class="spacer"></span>
-                <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
-                <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">导入</button>
+              <div class="import-foot">
+                <label class="check-inline">
+                  <input type="checkbox" id="import-auto-generate" />
+                  <span>导入后自动生成简历</span>
+                </label>
+                <div class="import-actions">
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-import-cancel">取消</button>
+                  <button class="btn btn-primary btn-sm" type="button" id="btn-import-confirm">开始导入</button>
+                </div>
               </div>
-            </div>
+            </section>
             <div class="chat-list" id="chat-list"><p class="empty">暂无对话，点「＋ 新建」开始。</p></div>
           </aside>
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8000")
+BASE = (os.environ.get("BASE_URL") or "").strip()  # 为空则自起隔离服务
 OUT = Path(__file__).resolve().parent / "shots"
 OUT.mkdir(exist_ok=True)
 
@@ -42,7 +42,7 @@ Employer questions
 - 最快到岗时间？"""
 
 
-def main() -> int:
+def _run(base: str, on_exit=None) -> int:
     errors: list[str] = []
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="msedge", headless=True)
@@ -50,7 +50,7 @@ def main() -> int:
         page.on("console", lambda m: errors.append(f"[console.{m.type}] {m.text}") if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"[pageerror] {e}"))
 
-        page.goto(BASE, wait_until="load")
+        page.goto(base, wait_until="load")
         page.wait_for_selector("#chat-list", timeout=15000)
         page.wait_for_timeout(800)
 
@@ -159,7 +159,25 @@ def main() -> int:
         else:
             print("\nUI 验证通过，无控制台错误 ✅")
         sys.stdout.flush()
+        # os._exit 会跳过 with/finally 清理，因此先显式收尾（终止隔离服务）
+        if on_exit:
+            on_exit()
         os._exit(code)
+
+
+def main() -> int:
+    """默认自起隔离服务；显式设置 BASE_URL 时才用外部服务。"""
+    explicit = (os.environ.get("BASE_URL") or "").strip()
+    if explicit:
+        print(f"[外部服务] {explicit} —— 若指向 8000，测试数据会写入用户真实库")
+        return _run(explicit)
+    from _ui_server import spawn_isolated_server, stop_isolated_server
+    proc, base, db_file = spawn_isolated_server("ui_check", 8121)
+    try:
+        return _run(base, on_exit=lambda: stop_isolated_server(proc, db_file))
+    except BaseException:
+        stop_isolated_server(proc, db_file)
+        raise
 
 
 if __name__ == "__main__":
