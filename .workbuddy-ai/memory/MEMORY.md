@@ -96,8 +96,14 @@
 
 ## `llm_max_tokens` 必须够大
 `SYSTEM_AI_EDIT` 要模型返回**整份简历 HTML**（约 9KB），4096 token 会被截断
-→ 表现为「无法解析 JSON」这种误导性报错。默认已提到 **8192**，并在 `llm.py` 里
-检测 `finish_reason == "length"` 抛可读的「输出被截断」错误。设置页可调，下界 256。
+→ 表现为「无法解析 JSON」这种误导性报错。**当前约定 `max_tokens <= 0` = 不限制**（请求体完全不发送该字段，由服务端决定），默认值 0；`llm.py` 仍保留 `finish_reason == "length"` 检测抛可读错误。设置页可调。
+**温度同理不发送**：请求体不含 temperature，由各家服务端默认值决定（用户明确不要暴露这两个参数）。
+**worker 数不暴露**：前端设置弹窗只有供应商/Base URL/Key/模型/max_tokens 五项。
+
+## API Key 已配置状态（前端必须醒目展示）
+设置弹窗有 `#cfg-key-status` 状态条：已配置显示「✓ API Key 已配置（脱敏）」，未配置显示降级模式提示。
+`POST /api/settings/llm/test` 未填 key 时**回落到已存储 key**（仅同供应商；custom 需 base_url 一致），
+用户无需重新输入即可测试连接。
 
 ## 本机环境坑（重要）
 **本机设了 `http_proxy`，代理会拦截 localhost 请求并返回 502。**

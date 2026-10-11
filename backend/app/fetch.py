@@ -28,6 +28,24 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 
+#: 完整浏览器请求头。实测：JobStreet 等站点只带 User-Agent 会返回 403（反爬），
+#: 补齐 Accept / sec-ch-ua / sec-fetch-* 后可正常 200。
+BROWSER_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "sec-ch-ua": '"Chromium";v="126", "Not(A:Brand";v="24", "Google Chrome";v="126"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "same-origin",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+    "cache-control": "max-age=0",
+}
+
 
 class FetchError(RuntimeError):
     """抓取失败（网络 / 协议 / 内容为空）。"""
@@ -110,7 +128,7 @@ async def fetch_url_text(url: str) -> dict[str, Any]:
             timeout=FETCH_TIMEOUT,
             trust_env=not is_local_url(url),
             follow_redirects=True,
-            headers={"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+            headers=dict(BROWSER_HEADERS, Referer=f"{urlparse(url).scheme}://{urlparse(url).netloc}/"),
         ) as client:
             resp = await client.get(url)
     except httpx.TimeoutException as exc:
