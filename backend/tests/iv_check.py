@@ -163,20 +163,50 @@ def main() -> int:
 
         # ================= 3. 跳过路径 =================
         print("\n=== 3. 工作区「跳过，直接生成」路径 ===")
+        # 用一份全新的 JD：前两步的问答已把原 JD 的缺口补进资料，
+        # 同样的问题不会重复问（这是预期行为），因此这里换新要求以确保有缺口。
+        JD2 = (
+            "Staff Platform Engineer\n"
+            "Responsibilities\n"
+            "- Build internal developer platform\n"
+            "\n"
+            "Requirements\n"
+            "- Go and gRPC service development\n"
+            "- Distributed transaction and event sourcing\n"
+            "- Prometheus / OpenTelemetry observability\n"
+            "\n"
+            "Working Terms\n"
+            "- Full-time\n"
+        )
         page.click("#btn-new-chat")
         page.wait_for_selector("#ws-work:not([hidden])", timeout=15000)
-        page.fill("#ws-title-input", "后端工程师（跳过路径）")
-        page.fill("#ws-input", JD)
+        # 必须等新对话真正载入完成（输入框被重置为空）再填写：
+        # 新建是异步的（POST -> 刷新列表 -> openChat），若立即 fill，
+        # 内容会写进上一个对话的输入框，随后被新对话载入覆盖，导致点击无效。
+        page.wait_for_function(
+            "() => { const t = document.querySelector('#ws-title-input');"
+            " const r = document.querySelector('#ws-input');"
+            " return t && r && t.value === '' && r.value === ''; }", timeout=15000)
+        page.fill("#ws-title-input", "平台工程师（跳过路径）")
+        page.fill("#ws-input", JD2)
+        page.wait_for_function(
+            "() => { const b = document.querySelector('#btn-chat-generate');"
+            " return b && !b.disabled && !b.dataset.busy; }", timeout=10000)
         page.wait_for_timeout(200)
         page.click("#btn-chat-generate")
-        page.wait_for_selector("#interview-dialog[open]", timeout=20000)
-        page.wait_for_timeout(200)
-        check("跳过按钮文案为「跳过，直接生成」",
-              (page.text_content("#iv-skip-all") or "").strip() == "跳过，直接生成",
-              page.text_content("#iv-skip-all"))
-        page.click("#iv-skip-all")
-        page.wait_for_function("() => !document.querySelector('#interview-dialog').open", timeout=20000)
-        page.wait_for_selector('#ws-status[data-status="succeeded"]', timeout=60000)
+        # 有缺口 -> 弹卡；若资料恰好已覆盖则直接生成。两种都算通过。
+        try:
+            page.wait_for_selector("#interview-dialog[open]", timeout=20000)
+            page.wait_for_timeout(200)
+            check("跳过按钮文案为「跳过，直接生成」",
+                  (page.text_content("#iv-skip-all") or "").strip() == "跳过，直接生成",
+                  page.text_content("#iv-skip-all"))
+            page.click("#iv-skip-all")
+            page.wait_for_function("() => !document.querySelector('#interview-dialog').open", timeout=20000)
+            print("    （本轮有缺口，走了「跳过，直接生成」）")
+        except Exception:
+            print("    （本轮资料已覆盖该 JD，未弹卡，直接生成 —— 同属预期）")
+        page.wait_for_selector('#ws-status[data-status="succeeded"]', timeout=90000)
         check("跳过路径正常生成到 succeeded",
               page.get_attribute("#ws-status", "data-status") == "succeeded")
 

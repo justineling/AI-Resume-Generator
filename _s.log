@@ -1,0 +1,21 @@
+### regression
+回归结果：247 通过 / 0 失败
+全部通过 ✅
+### smoke
+全部通过 ✅
+### xss
+全部通过 ✅
+### progress
+PROBE PASS ✅
+### chat_e2e
+================================================================
+前端 E2E： PASS 19 / FAIL 0
+### ui_check
+UI 验证通过，无控制台错误 ✅
+### settings_ui
+前端实测结果：32 通过 / 0 失败
+全部通过 ✅
+### iv_check
+Call log:
+  - waiting for locator("#interview-dialog[open]") to be visible
+

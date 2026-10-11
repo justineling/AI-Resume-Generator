@@ -21,12 +21,6 @@ from .prompts import (
 
 MAX_QUESTIONS = 6
 
-#: 允许出现在资料里的字段（防止模型塞入奇怪字段）
-_PROFILE_FIELDS = (
-    "name", "headline", "email", "phone", "location", "age", "avatar", "summary",
-    "links", "education", "experiences", "projects", "skills",
-    "certificates", "languages", "awards",
-)
 
 #: 判断「资料里是否有依据」时用到的文本来源
 def _profile_text(profile: dict[str, Any]) -> str:
@@ -184,29 +178,90 @@ async def generate_questions(
 # --------------------------------------------------------------------------- #
 # 整合回答
 # --------------------------------------------------------------------------- #
-def _merge_profile(original: dict[str, Any], updated: Any) -> dict[str, Any]:
-    """以原资料为基底合并模型返回：只接受白名单字段，且列表字段为空时保留原值。"""
-    if not isinstance(updated, dict):
-        return original
-    merged = dict(original)
-    for key in _PROFILE_FIELDS:
-        if key not in updated:
+def _merge_delta(profile: dict[str, Any], delta: Any) -> dict[str, Any]:
+    """把 LLM 返回的**增量**合并进资料。
+
+    为什么用增量：早期版本让模型输出整份 profile JSON，资料一大就要 90s+ 才返回
+    （输出 token 太多）。改为只输出新增片段后，速度回到 10s 量级。
+    只做「追加」，不改写、不删除任何原有字段。
+    """
+    if not isinstance(delta, dict):
+        return profile
+    p = dict(profile)
+
+    # 1) 个人概述追加
+    add_summary = str(delta.get("summary_append") or "").strip()
+    if add_summary:
+        old = str(p.get("summary") or "").strip()
+        if add_summary not in old:
+            p["summary"] = (old + "\n" + add_summary).strip() if old else add_summary
+
+    # 2) 经历要点追加（按 exp_index 指向已有经历；越界忽略，绝不新建假经历）
+    exps = list(p.get("experiences") or [])
+    changed_exp = False
+    for item in (delta.get("achievements") or []):
+        if not isinstance(item, dict):
             continue
-        val = updated[key]
-        if key in ("experiences", "projects", "skills", "education",
-                   "certificates", "languages", "links", "awards"):
-            # 列表：模型返回空列表 => 视为丢失，保留原值
-            if isinstance(val, list) and val:
-                merged[key] = val
-        elif key == "age":
-            try:
-                merged[key] = int(val) if val not in (None, "") else original.get("age")
-            except (TypeError, ValueError):
-                pass
-        else:
-            if isinstance(val, str) and val.strip():
-                merged[key] = val.strip()
-    return merged
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            idx = int(item.get("exp_index", 0))
+        except (TypeError, ValueError):
+            idx = 0
+        if 0 <= idx < len(exps) and isinstance(exps[idx], dict):
+            exp = dict(exps[idx])
+            ach = list(exp.get("achievements") or [])
+            if text not in ach:
+                ach.append(text[:400])
+                changed_exp = True
+            exp["achievements"] = ach
+            exps[idx] = exp
+    if changed_exp:
+        p["experiences"] = exps
+
+    # 3) 技能深度线索（只更新已存在的技能，不新增技能名——避免造出用户没有的技能）
+    notes = [n for n in (delta.get("skill_notes") or []) if isinstance(n, dict)]
+    if notes:
+        skills = list(p.get("skills") or [])
+        by_name = {str(s.get("name") or "").strip().lower(): i
+                   for i, s in enumerate(skills) if isinstance(s, dict)}
+        changed = False
+        for n in notes:
+            name = str(n.get("name") or "").strip().lower()
+            note = str(n.get("note") or "").strip()
+            if not name or not note or name not in by_name:
+                continue
+            i = by_name[name]
+            sk = dict(skills[i])
+            if not str(sk.get("note") or "").strip():
+                sk["note"] = note[:200]
+                skills[i] = sk
+                changed = True
+        if changed:
+            p["skills"] = skills
+
+    # 4) 新项目追加（按 name 去重）
+    projs = list(p.get("projects") or [])
+    existing = {str(x.get("name") or "").strip().lower() for x in projs if isinstance(x, dict)}
+    added = False
+    for pr in (delta.get("projects_append") or []):
+        if not isinstance(pr, dict):
+            continue
+        nm = str(pr.get("name") or "").strip()
+        if not nm or nm.lower() in existing:
+            continue
+        projs.append({
+            "name": nm[:120],
+            "summary": str(pr.get("summary") or "")[:400],
+            "highlights": [str(h)[:300] for h in (pr.get("highlights") or []) if str(h).strip()][:6],
+        })
+        existing.add(nm.lower())
+        added = True
+    if added:
+        p["projects"] = projs
+
+    return p
 
 
 def _apply_heuristic(profile: dict[str, Any], answers: list[dict[str, str]]) -> dict[str, Any]:
@@ -251,12 +306,12 @@ async def apply_answers(
         system = SYSTEM_INTERVIEW_APPLY_CHAT if for_chat else SYSTEM_INTERVIEW_APPLY
         try:
             user = (
-                "【当前资料 JSON】\n" + _json(profile)
+                "【当前资料 JSON】（只读参考，用于判断内容归属，**不要回显**）\n" + _json(profile)
                 + "\n\n【用户的补充回答】\n" + _json(payload, indent=1)
-                + "\n\n请输出整合后的完整资料 JSON。"
+                + "\n\n请按增量结构输出需要新增的内容。"
             )
-            out = await client.chat_json(system, user)
-            return _merge_profile(profile, out)
+            delta = await client.chat_json(system, user)
+            return _merge_delta(profile, delta)
         except (LLMError, ValueError):
             pass
 
