@@ -23,8 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlmodel import select  # noqa: E402
 
+from _dbguard import use_isolated_db, warn_if_shared_db  # noqa: E402
+
+# 未显式指定 DATABASE_URL 时自动切到隔离库（必须在 import app.* 之前）。
+use_isolated_db("regression")
+
 import app.scheduler as sched_mod  # noqa: E402
-from _dbguard import warn_if_shared_db  # noqa: E402
 from app.db import init_db, session_scope  # noqa: E402
 from app.llm import LLMClient, build_client  # noqa: E402
 from app.main import app  # noqa: E402
@@ -1350,6 +1354,50 @@ def main() -> int:
                 break
             time.sleep(0.3)
         client.delete(f"/api/chats/{cid2}?cascade=true")
+
+        # ---------------- F3 粘贴简历文本 -> 结构化资料 ----------------
+        print("\n[F3] 粘贴简历文本导入（/api/profile/import-text）")
+        RESUME_TXT = (
+            "王小明\n"
+            "高级前端工程师 | 深圳\n"
+            "邮箱: wangxm@example.com  电话: 13712345678\n"
+            "GitHub: https://github.com/wangxm\n"
+            "\n"
+            "工作经历\n"
+            "2020.06 - 至今  某某科技 | 高级前端工程师\n"
+            "- 主导管理后台性能优化，首屏时间从 3.2s 降到 1.1s\n"
+            "\n"
+            "专业技能\n"
+            "TypeScript, React, Vite\n"
+        )
+        r = client.post("/api/profile/import-text", json={"text": RESUME_TXT})
+        check("粘贴简历导入 -> 200", r.status_code == 200, r.status_code)
+        body = r.json()
+        check("导入 -> 解析出姓名", body.get("name") == "王小明", body.get("name"))
+        check("导入 -> 解析出邮箱", body.get("email") == "wangxm@example.com", body.get("email"))
+        check("导入 -> 解析出工作经历（>=1）", len(body.get("experiences") or []) >= 1,
+              len(body.get("experiences") or []))
+        check("导入 -> 解析出技能（>=1）", len(body.get("skills") or []) >= 1,
+              len(body.get("skills") or []))
+        check("导入 -> 时间区间被保留",
+              any((e.get("start") or "").startswith("2020") for e in (body.get("experiences") or [])),
+              body.get("experiences"))
+        persisted = client.get("/api/profile").json()
+        check("导入 -> 语义同 PUT（已写库）", persisted.get("name") == "王小明", persisted.get("name"))
+
+        # 空文本 -> 400 且中文可读
+        r = client.post("/api/profile/import-text", json={"text": "   "})
+        check("空文本 -> 400 且文案可读", r.status_code == 400 and "粘贴" in r.json().get("detail", ""),
+              f"{r.status_code} {r.json().get('detail')}")
+
+        # 无 API Key -> 走启发式降级，链路仍可用、不抛错
+        check("当前为降级模式（无 Key）", client.get("/api/settings/llm").json()["mock_mode"] is True)
+        r = client.post("/api/profile/import-text", json={"text": "李雷\n技能: Go, MySQL\n"})
+        check("无 Key 降级也能解析（不抛错）",
+              r.status_code == 200 and r.json().get("name") == "李雷", r.status_code)
+
+        # 还原一份干净资料，避免影响后续
+        client.put("/api/profile", json={"name": "张三"})
 
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:

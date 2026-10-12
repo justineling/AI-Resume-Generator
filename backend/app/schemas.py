@@ -102,6 +102,12 @@ class ProfileOut(ProfileIn):
     updated_at: datetime
 
 
+class ProfileImportTextIn(BaseModel):
+    """粘贴简历原文 -> 让 LLM / 启发式解析成完整资料并写库。"""
+
+    text: str = ""
+
+
 # ----------------------------- Chat ----------------------------- #
 class ChatIn(BaseModel):
     """新建聊天工作区。"""

@@ -539,3 +539,294 @@ def edit_html(instruction: str, html: str, scope: str = "whole", target: str = "
     if not summary:
         summary = "本地降级模式仅支持有限的编辑指令（如“删除技能章节”“切换深色”）。接入 LLM 后可执行任意自然语言修改。"
     return {"html": new_html, "summary": summary}
+
+
+# --------------------------------------------------------------------------- #
+# 粘贴简历文本 -> 结构化资料（无 LLM 时的启发式）
+#
+# 目标：把用户粘贴的简历原文尽量抽取成 ProfileIn 形状的 dict；抽不到就留空，
+# **绝不编造**公司与数字（与 SYSTEM_PARSE_RESUME 的约束一致）。
+# --------------------------------------------------------------------------- #
+_RESUME_SECTIONS: list[tuple[str, tuple[str, ...]]] = [
+    ("summary", ("个人简介", "自我评价", "个人总结", "个人概述", "关于我", "求职意向",
+                 "summary", "profile summary", "about me", "objective")),
+    ("experiences", ("工作经历", "工作经验", "职业经历", "工作履历", "从业经历",
+                     "experience", "work experience", "employment history", "employment")),
+    ("projects", ("项目经历", "项目经验", "project experience", "projects")),
+    ("education", ("教育背景", "教育经历", "学历背景", "education", "educational background")),
+    ("skills", ("专业技能", "技能清单", "技能特长", "技能", "technical skills", "core skills", "skills")),
+    ("certificates", ("证书", "资格证书", "certifications", "certificates", "licenses")),
+    ("awards", ("荣誉奖项", "获奖经历", "荣誉", "获奖", "奖项", "awards", "honors", "honours")),
+    ("languages", ("语言能力", "语言水平", "语言", "languages")),
+    ("links", ("个人链接", "相关链接", "链接", "个人主页", "links")),
+]
+
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_PHONE_RE = re.compile(r"(?:(?:\+?86[\s\-]?)?1[3-9]\d{9})|(?:\+?\d{1,3}[\s\-]?\d[\d\s\-()]{6,}\d)")
+_URL_RE = re.compile(r"https?://[^\s，。；、）)】\]]+")
+_YEAR_RE = re.compile(r"(19|20)\d{2}")
+_DATE_RANGE_RE = re.compile(
+    r"((?:19|20)\d{2}[./\-年]?\d{0,2})\s*(?:[-~—–至到]|to)\s*"
+    r"((?:19|20)\d{2}[./\-年]?\d{0,2}|至今|目前|present|now|current)",
+    re.I,
+)
+_TITLE_HINTS = ("工程师", "开发", "设计", "经理", "主管", "专家", "总监", "架构师", "负责人",
+                "lead", "engineer", "developer", "designer", "manager", "architect", "analyst")
+_LINK_LABELS = (("github", "GitHub"), ("linkedin", "LinkedIn"), ("gitlab", "GitLab"),
+                ("behance", "Behance"), ("dribbble", "Dribbble"), ("medium", "Medium"))
+
+
+def _resume_heading(line: str) -> str | None:
+    """判断一行是否为简历小节标题；是则返回归一化 kind。"""
+    if _BULLET_RE.match(line):
+        return None
+    norm = line.strip().rstrip(":：").strip().lower()
+    if not norm or len(norm) > 24:
+        return None
+    for kind, keys in _RESUME_SECTIONS:
+        for k in keys:
+            if norm == k or norm.startswith(k) or norm.endswith(k):
+                return kind
+    return None
+
+
+def _label_value(text: str, labels: tuple[str, ...]) -> str:
+    for lab in labels:
+        m = re.search(re.escape(lab) + r"\s*[:：]\s*([^\n]{1,80})", text, re.I)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def _blocks(lines: list[str]) -> list[list[str]]:
+    """按空行切成条目块（保留块内顺序）。"""
+    out: list[list[str]] = []
+    cur: list[str] = []
+    for ln in lines:
+        if ln.strip():
+            cur.append(ln.strip())
+        elif cur:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _split_by_dates(block: list[str]) -> list[list[str]]:
+    """一个块里出现多条日期区间时，按日期行再次切分（无空行的简历常见）。"""
+    idxs = [i for i, ln in enumerate(block)
+            if _DATE_RANGE_RE.search(ln) and not _BULLET_RE.match(ln)]
+    if len(idxs) <= 1:
+        return [block]
+    groups: list[list[str]] = []
+    start = 0
+    for k, i in enumerate(idxs):
+        if k == 0:
+            start = i if i == 0 else 0
+            continue
+        groups.append(block[start:i])
+        start = i
+    groups.append(block[start:])
+    return [g for g in groups if g]
+
+
+def _dates(block: list[str]) -> tuple[str, str]:
+    joined = " ".join(block)
+    for ln in block:
+        m = _DATE_RANGE_RE.search(ln)
+        if m:
+            return m.group(1).strip(), m.group(2).strip()
+    found = _YEAR_RE.search(joined)
+    if found:
+        start = found.group(0)
+        rest = _YEAR_RE.search(joined[found.end():])
+        return start, (rest.group(0) if rest else "")
+    return "", ""
+
+
+def _strip_leading_date(line: str) -> str:
+    """去掉首行开头的日期区间，避免混进公司 / 学校名。"""
+    s = line.strip()
+    m = _DATE_RANGE_RE.match(s)
+    if m:
+        cleaned = s[m.end():].strip(" -—–~|｜·\t")
+        if cleaned:
+            return cleaned
+    return s
+
+
+def _head_parts(head: str) -> tuple[str, str]:
+    """从条目首行拆出 (主体1, 主体2)：如 公司 | 职位 / 学校 - 专业。"""
+    for sep in ("|", "｜", "—", "–", "·"):
+        if sep in head:
+            parts = [p.strip() for p in head.split(sep) if p.strip()]
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+    parts = [p for p in re.split(r"\s{2,}|\t+", head) if p.strip()]
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return head.strip(), ""
+
+
+def _body_lines(block: list[str]) -> tuple[str, list[str]]:
+    """块内除首行与日期行外：无项目符号的短句归为概述，其余条目归为要点。"""
+    summary = ""
+    bullets: list[str] = []
+    for ln in block[1:]:
+        m = _BULLET_RE.match(ln)
+        if m:
+            bullets.append(m.group(1).strip())
+            continue
+        if _DATE_RANGE_RE.search(ln) or _YEAR_RE.search(ln):
+            continue
+        if not summary and len(ln) <= 80:
+            summary = ln.strip()
+        else:
+            bullets.append(ln.strip())
+    return summary, [b for b in bullets if b][:6]
+
+
+def _parse_resume_entries(lines: list[str], kind: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for blk in _blocks(lines):
+        for group in _split_by_dates(blk):
+            head = _strip_leading_date(group[0])
+            start, end = _dates(group)
+            summary, bullets = _body_lines(group)
+            a, b = _head_parts(head)
+            if kind == "experiences":
+                out.append({"company": a[:120], "title": b[:120], "location": "",
+                            "start": start, "end": end, "summary": summary[:400],
+                            "achievements": bullets, "tech": []})
+            elif kind == "projects":
+                out.append({"name": (a or head)[:120], "role": b[:80], "start": start, "end": end,
+                            "link": "", "summary": summary[:400], "highlights": bullets})
+            elif kind == "education":
+                out.append({"school": (a or head)[:120], "degree": "", "major": b[:120],
+                            "start": start, "end": end, "highlights": bullets})
+            elif kind == "certificates":
+                out.append({"name": (a or head)[:120], "issuer": b[:120], "date": (start or end)[:40]})
+            elif kind == "awards":
+                out.append({"name": (a or head)[:120], "date": (start or end)[:40], "detail": summary[:200]})
+    return out
+
+
+def _parse_skills(lines: list[str]) -> list[dict[str, Any]]:
+    tokens: list[str] = []
+    for ln in lines:
+        m = _BULLET_RE.match(ln)
+        text = m.group(1) if m else ln
+        tokens += [t.strip() for t in re.split(r"[,，、;；/|｜]", text) if t.strip()]
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for t in tokens:
+        t = t.strip()
+        low = t.lower()
+        if not (1 <= len(t) <= 30) or low in seen:
+            continue
+        seen.add(low)
+        out.append({"name": t, "level": "", "category": ""})
+        if len(out) >= 40:
+            break
+    return out
+
+
+def _collect_links(text: str, lines: list[str]) -> list[dict[str, Any]]:
+    urls = _URL_RE.findall(text) + [ln for ln in lines if ln.startswith("http")]
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for u in urls:
+        u = u.strip().rstrip(".,，。；;")
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        label = ""
+        for key, name in _LINK_LABELS:
+            if key in u.lower():
+                label = name
+                break
+        out.append({"label": label, "url": u})
+    return out[:8]
+
+
+def parse_resume_text(raw_text: str) -> dict[str, Any]:
+    """启发式：把简历纯文本解析成 ProfileIn 形状的 dict（抽不到就留空）。"""
+    text = raw_text or ""
+    raw_lines = text.splitlines()
+
+    sections: dict[str, list[str]] = {}
+    header: list[str] = []
+    current: str | None = None
+    for ln in raw_lines:
+        kind = _resume_heading(ln)
+        if kind:
+            current = kind
+            sections.setdefault(kind, [])
+            # 「技能：Python, Java」这类行内小节：冒号后的内容也归入该小节
+            m = re.match(r"^\s*[^:：]{1,24}\s*[:：]\s*(.+)$", ln)
+            if m:
+                sections[kind].append(m.group(1).strip())
+            continue
+        if current:
+            sections[current].append(ln)
+        else:
+            header.append(ln)
+
+    # --- 身份字段 ---
+    name = _label_value(text, ("姓名", "Name"))
+    headline = _label_value(text, ("一句话定位", "求职意向", "目标职位", "期望职位", "意向岗位", "定位"))
+    location = _label_value(text, ("所在城市", "现居", "所在地", "城市", "地址", "Location"))
+    age_raw = _label_value(text, ("年龄", "Age"))
+    age: int | None = None
+    if age_raw:
+        m = re.search(r"\d{1,2}", age_raw)
+        if m:
+            age = int(m.group(0))
+
+    header_lines = [ln.strip() for ln in header if ln.strip()]
+    if not name and header_lines:
+        first = header_lines[0]
+        if (len(first) <= 20 and "@" not in first and not _YEAR_RE.search(first)
+                and not _resume_heading(first)):
+            name = first
+    if not headline:
+        for ln in header_lines:
+            low = ln.lower()
+            if any(h in low for h in _TITLE_HINTS) and len(ln) <= 60:
+                headline = re.split(r"[|｜]|\s{2,}", ln)[0].strip()
+                break
+
+    email = _EMAIL_RE.search(text)
+    phone = _PHONE_RE.search(text)
+
+    summary = "\n".join(s for s in (l.strip() for l in sections.get("summary", []))
+                        if s and not _resume_heading(s))[:800]
+    if not summary:
+        # 无小节标题时：把头部里较长的说明性句子当作概述
+        long_lines = [l for l in header_lines if len(l) >= 40]
+        summary = long_lines[0][:800] if long_lines else ""
+
+    return {
+        "name": name[:80],
+        "headline": headline[:120],
+        "email": email.group(0) if email else "",
+        "phone": phone.group(0).strip() if phone else "",
+        "location": location[:80],
+        "age": age,
+        "avatar": "",
+        "summary": summary,
+        "links": _collect_links(text, sections.get("links", [])),
+        "experiences": _parse_resume_entries(sections.get("experiences", []), "experiences"),
+        "projects": _parse_resume_entries(sections.get("projects", []), "projects"),
+        "skills": _parse_skills(sections.get("skills", [])),
+        "education": _parse_resume_entries(sections.get("education", []), "education"),
+        "certificates": _parse_resume_entries(sections.get("certificates", []), "certificates"),
+        "awards": _parse_resume_entries(sections.get("awards", []), "awards"),
+        "languages": [{"name": t, "level": ""}
+                      for t in (s.strip() for s in
+                                re.split(r"[,，、;；/|｜\n]",
+                                         "\n".join(sections.get("languages", []))))
+                      if 1 <= len(t) <= 30][:10],
+        "extra": {},
+    }

@@ -155,10 +155,13 @@ def _run(base: str) -> int:
         page.wait_for_timeout(400)
         check("确认提交后进入生成态并最终 succeeded",
               page.get_attribute("#ws-status", "data-status") == "succeeded")
-        check("生成按钮未卡在 loading（非禁用且文案为「重新生成」）",
+        # 交互更新：生成成功后主按钮变为「查看简历 →」（可点击打开简历），
+        # 并出现次级「重新生成」。只要按钮未卡在 loading 即通过。
+        _gen_text = (page.text_content("#btn-chat-generate") or "").strip()
+        check("生成按钮未卡在 loading（可查看简历 / 可重新生成）",
               page.get_attribute("#btn-chat-generate", "disabled") is None
-              and "生成" in (page.text_content("#btn-chat-generate") or ""),
-              page.text_content("#btn-chat-generate"))
+              and ("查看简历" in _gen_text or "生成" in _gen_text),
+              _gen_text)
         page.screenshot(path=str(SHOTS / "iv-04-workspace-succeeded.png"))
 
         # ================= 3. 跳过路径 =================

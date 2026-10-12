@@ -101,6 +101,11 @@ export async function initProfile() {
   // 让 AI 帮我完善（问答 flashcard）
   $("#btn-profile-ai").addEventListener("click", runInterview);
 
+  // 粘贴简历文本导入（解析成资料并回填表单）
+  $("#btn-profile-import-text").addEventListener("click", openResumeImport);
+  $("#btn-import-text-cancel").addEventListener("click", () => $("#resume-import-dialog").close());
+  $("#btn-import-text-run").addEventListener("click", runResumeImport);
+
   // 导入导出
   $("#btn-export-profile").addEventListener("click", exportProfile);
   $("#pf-import-file").addEventListener("change", importProfile);
@@ -161,6 +166,46 @@ async function runInterview() {
     toast(`生成问题失败：${err.message}`, "err");
   } finally {
     btn.disabled = false;
+  }
+}
+
+// --------------------------- 粘贴简历文本导入 --------------------------- //
+function openResumeImport() {
+  const dlg = $("#resume-import-dialog");
+  $("#ri-text").value = "";
+  setImportStatus("", "");
+  dlg.showModal();
+  $("#ri-text").focus();
+}
+
+function setImportStatus(kind, message) {
+  const node = $("#ri-status");
+  if (!node) return;
+  node.className = "test-result" + (kind ? ` is-${kind}` : "");
+  node.textContent = message || "";
+}
+
+// 把粘贴的简历原文交给后端解析（LLM 优先 / 无 Key 走启发式），成功后回填表单
+async function runResumeImport() {
+  const text = $("#ri-text").value.trim();
+  if (!text) { setImportStatus("err", "请先粘贴简历文本"); return; }
+  const btn = $("#btn-import-text-run");
+  btn.disabled = true;
+  btn.textContent = "解析中…";
+  setImportStatus("pending", "正在解析简历文本…");
+  try {
+    const saved = await api.importProfileText(text);
+    applyProfileData(saved);
+    setState(`已更新 · ${fmtTime(saved.updated_at)}`);
+    $("#resume-import-dialog").close();
+    const nExp = (saved.experiences || []).length;
+    const nSkill = (saved.skills || []).length;
+    toast(`已从简历文本导入 ${nExp} 段经历 / ${nSkill} 项技能`, "ok");
+  } catch (err) {
+    setImportStatus("err", `解析失败：${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "解析并填入";
   }
 }
 

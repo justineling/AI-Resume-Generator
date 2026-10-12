@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..db import get_session
@@ -13,6 +13,7 @@ from ..schemas import (
     InterviewAnswersIn,
     InterviewQuestionsOut,
     ProfileIn,
+    ProfileImportTextIn,
     ProfileInterviewIn,
     ProfileOut,
 )
@@ -40,6 +41,34 @@ def update_profile(payload: ProfileIn, session: Session = Depends(get_session)) 
     p = _get_or_create(session)
     for field, value in payload.model_dump().items():
         setattr(p, field, value)
+    p.updated_at = datetime.now()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p
+
+
+@router.post("/import-text", response_model=ProfileOut)
+async def import_profile_text(
+    payload: ProfileImportTextIn, session: Session = Depends(get_session)
+) -> Profile:
+    """粘贴简历原文 -> 解析成完整资料并**直接写库**（语义同 PUT /api/profile）。
+
+    有 API Key 时用 LLM 解析（只提取真实信息，绝不编造）；无 Key 时回落启发式，
+    保证功能链路可用、不抛错。
+    """
+    from ..profile_import import parse_profile_text
+
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="请先粘贴简历文本")
+
+    data = await parse_profile_text(text, build_client(session))
+    p = _get_or_create(session)
+    valid = ProfileIn().model_dump().keys()
+    for field, value in data.items():
+        if field in valid:
+            setattr(p, field, value)
     p.updated_at = datetime.now()
     session.add(p)
     session.commit()

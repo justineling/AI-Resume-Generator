@@ -24,12 +24,12 @@
 
   /* 叠加层：用于 hover / 面板底 / 信号色底等半透明效果。
      原本是硬编码的 rgba(255,255,255,*) 与 rgba(24,209,255,*)，浅色模式下会失效，故统一 token 化。 */
-  --tint-soft: var(--tint-soft);      /* 极淡：卡片底、输入框底 */
-  --tint-hover: var(--tint-hover);      /* hover / 选中底 */
-  --tint-strong: var(--tint-strong);     /* 滚动条滑块等 */
-  --grid-line: var(--tint-soft);      /* 蓝图底纹网格线 */
-  --signal-tint: var(--signal-tint);
-  --signal-tint-strong: var(--signal-tint-strong);
+  --tint-soft: rgba(255, 255, 255, 0.03);      /* 极淡：卡片底、输入框底 */
+  --tint-hover: rgba(255, 255, 255, 0.06);      /* hover / 选中底 */
+  --tint-strong: rgba(255, 255, 255, 0.12);     /* 滚动条滑块等 */
+  --grid-line: rgba(255, 255, 255, 0.022);      /* 蓝图底纹网格线 */
+  --signal-tint: rgba(24, 209, 255, 0.06);
+  --signal-tint-strong: rgba(24, 209, 255, 0.14);
   --on-signal: #04181f;                          /* 信号色背景之上的文字色 */
 
   /* 字体 */
@@ -1054,3 +1054,57 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
 .check-inline{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--fg); cursor:pointer;}
 .check-inline input{accent-color:var(--signal); width:auto; flex:0 0 auto;}
 .empty-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+
+/* ============================ 命令面板（Ctrl/Cmd + K） ============================ */
+.dialog-cmd { width: min(560px, 92vw); }
+.cmd-form { padding: 0; }
+.cmd-input-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--rule);
+}
+/* 聚焦时左侧信号竖条（Ark 的方向性提示，无圆角） */
+.cmd-input-row:focus-within { box-shadow: inset 2px 0 0 var(--signal); }
+/* CSS 绘制的「命令」标记，替代图标字体 */
+.cmd-mark {
+  width: 12px; height: 12px; flex: 0 0 auto; position: relative;
+  border: 1.5px solid var(--signal); border-radius: var(--radius);
+}
+.cmd-mark::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; transform: translate(-50%, -50%); background: var(--signal);
+}
+#cmd-input {
+  flex: 1 1 auto; min-width: 0; width: auto;
+  background: transparent; border: none; color: var(--fg);
+  font-size: 14px; padding: 4px 0;
+}
+#cmd-input:focus { outline: none; border: none; background: transparent; box-shadow: none; }
+.cmd-list { max-height: 46vh; overflow-y: auto; padding: 6px 0 8px; }
+.cmd-group {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); padding: 9px 16px 4px;
+}
+.cmd-item {
+  display: block; width: 100%; text-align: left; appearance: none; cursor: pointer;
+  border: none; border-left: 2px solid transparent; background: transparent; color: var(--fg);
+  font-family: var(--font-ui); font-size: 13px; padding: 9px 16px;
+  transition: background var(--t-direct) var(--ease);
+}
+.cmd-item:hover { background: var(--tint-hover); }
+.cmd-item[aria-selected="true"] {
+  background: var(--signal-tint-strong); border-left-color: var(--signal);
+}
+.cmd-item-title { display: block; }
+.cmd-item-hint {
+  display: block; margin-top: 2px; font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: 0.04em; color: var(--muted);
+}
+.cmd-empty { padding: 18px 16px; margin: 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+@media (max-width: 760px) {
+  .dialog-cmd { width: min(560px, 94vw); }
+  .cmd-list { max-height: 56vh; }
+}
+
+/* 次要字段（职位名称）：弱化视觉，让「岗位要求」保持主视觉 */
+.field-secondary > span { color: var(--muted); font-size: 10.5px; }
+.field-secondary input { font-size: 12.5px; background: var(--surface); border-color: var(--rule); }

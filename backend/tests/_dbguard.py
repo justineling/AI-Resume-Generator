@@ -24,6 +24,31 @@ if str(_BACKEND) not in sys.path:
 _SHARED_SUFFIX = "data/app.db"
 
 
+def use_isolated_db(script_name: str) -> str:
+    """确保进程内测试跑在隔离库上，返回最终的 DATABASE_URL。
+
+    **必须在 `import app.main` / `import app.db` 之前调用** —— `app.config.settings`
+    在导入时读取环境变量，之后再改就晚了。
+
+    行为：
+    - 未设置 `DATABASE_URL` → 自动指向 `data/_<script_name>.db` 并打印提示。
+      这样「忘记显式指定」不会再污染用户真实库（曾实测被写入 200+ 条测试数据）。
+    - 已设置 → 原样保留；若指向共享库则打印醒目警告（显式指定了，尊重使用者意图）。
+    """
+    cur = (os.environ.get("DATABASE_URL") or "").strip()
+    if cur:
+        if _SHARED_SUFFIX in cur:
+            print("=" * 68, flush=True)
+            print("[警告] DATABASE_URL 显式指向共享库 data/app.db，测试数据会写入用户真实库。", flush=True)
+            print("=" * 68, flush=True)
+        return cur
+
+    url = f"sqlite:///{(Path(__file__).resolve().parent.parent.parent / 'data' / f'_{script_name}.db').as_posix()}"
+    os.environ["DATABASE_URL"] = url
+    print(f"[隔离库] 未指定 DATABASE_URL，自动使用 {url}（不会写入用户库）", flush=True)
+    return url
+
+
 def warn_if_shared_db(script: str = "backend/tests/<脚本名>.py") -> None:
     """若当前进程将使用共享库 `data/app.db`，打印醒目警告（不阻断运行）。
 

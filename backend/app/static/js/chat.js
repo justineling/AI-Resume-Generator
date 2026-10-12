@@ -83,7 +83,17 @@ export function initChat({ openResume, switchView: switchTo }) {
     }
   });
 
-  $("#btn-chat-generate").addEventListener("click", generateChat);
+  // 生成按钮：成功后进入「查看简历 →」模式，点击打开该对话的简历；否则触发生成
+  $("#btn-chat-generate").addEventListener("click", () => {
+    const btn = $("#btn-chat-generate");
+    if (btn.dataset.mode === "view" && currentChat && currentChat.resume_id && onOpenResume) {
+      onOpenResume(currentChat.resume_id);
+      return;
+    }
+    generateChat();
+  });
+  // 次级入口：保留「重新生成」能力（成功后的查看模式下可见）
+  $("#btn-chat-regenerate").addEventListener("click", generateChat);
   $("#btn-chat-cancel").addEventListener("click", cancelChat);
   $("#btn-chat-retry").addEventListener("click", retryChat);
   $("#btn-chat-delete").addEventListener("click", deleteChat);
@@ -97,12 +107,25 @@ export function initChat({ openResume, switchView: switchTo }) {
   for (const node of [titleInput, reqInput]) {
     node.addEventListener("input", updateComposerState);
     node.addEventListener("keydown", (ev) => {
+      if (ev.isComposing) return;   // 中文输入法组合中不触发
       if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
         ev.preventDefault();
         generateChat();
       }
     });
   }
+
+  // 粘贴岗位要求后：若职位名称为空，用本地启发式猜一个职位名回填（可留空，不硬填）
+  reqInput.addEventListener("paste", () => {
+    window.setTimeout(() => {
+      if (titleInput.value.trim()) return;
+      const guess = guessJobTitle(reqInput.value);
+      if (guess) {
+        titleInput.value = guess;
+        updateComposerState();
+      }
+    }, 0);
+  });
 
   // 窄屏：对话列表折叠为顶部可切换条
   $("#btn-toggle-chats").addEventListener("click", (ev) => {
@@ -267,11 +290,18 @@ function updateComposerState() {
 
   // 生成按钮始终可见，用文案/禁用态表达当前状态：生成简历 / 保存中… / 生成中… / 重新生成
   const genBtn = $("#btn-chat-generate");
+  const regenBtn = $("#btn-chat-regenerate");
   const busy = genBtn.dataset.busy === "1";
+  // 生成成功后、且用户未再编辑字段 -> 主按钮变为「查看简历 →」，次级入口保留「重新生成」
+  const viewMode = !!(c && !active && !busy && c.status === "succeeded"
+    && c.resume_id && !composerDirty());
   genBtn.hidden = false;
-  genBtn.disabled = active || busy || (!titleVal && !reqVal);
+  genBtn.disabled = active || busy || (!viewMode && !titleVal && !reqVal);
+  genBtn.dataset.mode = viewMode ? "view" : "generate";
+  if (regenBtn) regenBtn.hidden = !viewMode;
   if (busy) { /* 文案由 generateChat 控制（保存中… / 生成中…） */ }
   else if (active) genBtn.textContent = "生成中…";
+  else if (viewMode) genBtn.textContent = "查看简历 →";
   else genBtn.textContent = c && c.resume_id ? "重新生成" : "生成简历";
 
   // 生成中锁定输入，避免编辑内容与正在跑的任务错位
@@ -693,6 +723,7 @@ export function applyChatEvent(event) {
       renderHead();
       // 生成成功后拉取最新详情（补齐 resume_id 与「已生成」提示消息）
       if (name === "chat_updated" && payload.status === "succeeded") {
+        toast("生成完成，可点击「查看简历 →」打开", "ok", 5000);
         openChat(id, { silent: true });
       }
     }
@@ -705,4 +736,26 @@ export function applyChatEvent(event) {
 function chatStatusLabel(status) {
   if (status === "draft") return "草稿";
   return statusLabel(status);
+}
+
+// 岗位要求里的小节标题（这些行不是职位名称）
+const JD_HEADING_RE = /^(responsibilities|requirements|qualifications|working terms|job description|about the role|what you'?ll do|岗位职责|任职要求|任职资格|工作内容|职位描述|岗位要求|工作职责|福利待遇|技能要求)\s*:?$/i;
+const JD_BULLET_RE = /^\s*(?:[-•*·‣▪]|\d+[.)、])\s*/;
+
+// 本地启发式：从粘贴的岗位要求里猜职位名称。猜不到返回空串（不硬填）。
+function guessJobTitle(text) {
+  const lines = String(text || "").split(/\r?\n/).slice(0, 15);
+  for (const raw of lines) {
+    const s = raw.trim().replace(/[）)\]]+$/, "").trim();
+    if (!s) continue;
+    if (JD_BULLET_RE.test(s)) continue;             // 列表项不是职位名
+    if (s.length < 4 || s.length > 60) continue;     // 过短/过长都跳过
+    if (/[:：]/.test(s)) continue;                   // 含冒号通常是小节/字段
+    if (JD_HEADING_RE.test(s)) continue;             // 小节标题
+    if (s.includes("@") || /https?:/i.test(s)) continue;   // 联系方式 / 链接
+    if (!/[A-Za-z\u4e00-\u9fff]/.test(s)) continue;  // 纯符号
+    if (/^[\d\s./\-–—至到年月日]+$/.test(s)) continue;      // 纯日期 / 数字
+    return s;
+  }
+  return "";
 }

@@ -30,6 +30,7 @@ export const api = {
   // 资料
   getProfile: () => api.get("/api/profile"),
   saveProfile: (p) => api.put("/api/profile", p),
+  importProfileText: (text) => api.post("/api/profile/import-text", { text }),
   // AI 面试问答（flashcard）
   profileInterview: (focus) => api.post("/api/profile/interview", { focus: focus || "" }),
   profileInterviewApply: (answers, autoGenerate = false) =>

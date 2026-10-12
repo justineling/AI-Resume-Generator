@@ -1,6 +1,6 @@
 // 应用入口：视图路由、事件流、设置弹窗
 import { api, connectEvents } from "./api.js";
-import { $, $$, toast } from "./ui.js";
+import { $, $$, el, toast } from "./ui.js";
 import { initProfile } from "./profile.js";
 import { initChat, refreshChats, applyChatEvent } from "./chat.js";
 import { initResume, refreshResumes, openResume } from "./resume.js";
@@ -295,6 +295,209 @@ async function saveSettings() {
   }
 }
 
+// --------------------------------------------------------------------------- //
+// 命令面板（Ctrl/Cmd + K）
+// 在 app.js 内注册命令，避免 chat.js / resume.js 与本模块循环依赖；
+// 命令行为统一复用既有入口（DOM 点击 / 视图切换 / openResume）。
+// --------------------------------------------------------------------------- //
+let cmdAll = [];        // 已登记的全部命令
+let cmdItems = [];      // 当前过滤后展示的命令
+let cmdIndex = 0;       // 高亮项
+let cmdReturnFocus = null;
+
+function clickEl(sel) { const n = $(sel); if (n) n.click(); }
+
+function syncThemeSelect() {
+  const sel = $("#cfg-theme");
+  if (sel) sel.value = currentTheme();
+}
+
+function baseCommands() {
+  return [
+    { group: "工作区", title: "新建对话", hint: "新建一个岗位场景", run: () => clickEl("#btn-new-chat") },
+    { group: "工作区", title: "从链接导入", hint: "粘贴招聘页面链接自动抓取",
+      run: () => { switchView("workspace"); clickEl("#btn-import-url"); } },
+    { group: "导航", title: "打开 资料", hint: "01 资料库", run: () => switchView("profile") },
+    { group: "导航", title: "打开 工作区", hint: "02 对话工作区", run: () => switchView("workspace") },
+    { group: "导航", title: "打开 简历", hint: "03 简历工作台", run: () => switchView("resume") },
+    { group: "系统", title: "设置（模型配置）", hint: "供应商 / API Key / 模型", run: () => clickEl("#btn-settings") },
+    { group: "系统", title: "切换颜色模式：深色", run: () => { applyTheme("dark"); syncThemeSelect(); } },
+    { group: "系统", title: "切换颜色模式：浅色", run: () => { applyTheme("light"); syncThemeSelect(); } },
+    { group: "系统", title: "切换颜色模式：跟随系统", run: () => { applyTheme("auto"); syncThemeSelect(); } },
+    { group: "系统", title: "刷新数据", hint: "重新拉取对话与简历", run: () => clickEl("#btn-refresh") },
+  ];
+}
+
+async function resumeCommands() {
+  try {
+    const list = await api.listResumes();
+    return (Array.isArray(list) ? list : []).slice(0, 5).map((r) => ({
+      group: "简历",
+      title: `打开简历：${r.title || `简历 #${r.id}`}`,
+      hint: `RESUME-${String(r.id).padStart(4, "0")} · v${r.version}`,
+      run: () => openResume(r.id),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 模糊匹配：query 的每个字符按顺序出现在标题里即命中
+function fuzzyMatch(text, query) {
+  const t = String(text).toLowerCase();
+  let i = 0;
+  for (const ch of String(query).toLowerCase()) {
+    if (ch === " ") continue;
+    i = t.indexOf(ch, i);
+    if (i === -1) return false;
+    i += 1;
+  }
+  return true;
+}
+
+function renderCommands(query) {
+  const host = $("#cmd-list");
+  const q = (query || "").trim();
+  cmdItems = q ? cmdAll.filter((c) => fuzzyMatch(c.title, q)) : cmdAll.slice();
+  if (cmdIndex >= cmdItems.length) cmdIndex = 0;
+  host.innerHTML = "";
+  $("#cmd-empty").hidden = cmdItems.length > 0;
+  let lastGroup = null;
+  cmdItems.forEach((c, i) => {
+    if (c.group !== lastGroup) {
+      lastGroup = c.group;
+      host.appendChild(el("div", { class: "cmd-group", role: "presentation", text: c.group }));
+    }
+    const btn = el("button", {
+      class: "cmd-item", type: "button", id: `cmd-opt-${i}`,
+      role: "option", "aria-selected": String(i === cmdIndex),
+    }, [
+      el("span", { class: "cmd-item-title", text: c.title }),
+      c.hint ? el("span", { class: "cmd-item-hint", text: c.hint }) : null,
+    ]);
+    btn.addEventListener("mousemove", () => setCmdIndex(i, false));
+    btn.addEventListener("click", () => runCmd(i));
+    host.appendChild(btn);
+  });
+  syncActiveDescendant();
+}
+
+function setCmdIndex(i, scroll = true) {
+  if (!cmdItems.length) return;
+  cmdIndex = Math.max(0, Math.min(i, cmdItems.length - 1));
+  $$("#cmd-list .cmd-item").forEach((node, idx) => {
+    node.setAttribute("aria-selected", String(idx === cmdIndex));
+  });
+  if (scroll) {
+    const active = $(`#cmd-opt-${cmdIndex}`);
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+  }
+  syncActiveDescendant();
+}
+
+function syncActiveDescendant() {
+  const input = $("#cmd-input");
+  if (!input) return;
+  if (cmdItems.length) input.setAttribute("aria-activedescendant", `cmd-opt-${cmdIndex}`);
+  else input.removeAttribute("aria-activedescendant");
+}
+
+function runCmd(i) {
+  const cmd = cmdItems[i];
+  closePalette();
+  if (cmd && typeof cmd.run === "function") {
+    // 先关闭面板再执行，避免在 showModal 的浮层上再叠加浮层产生焦点错乱
+    setTimeout(() => {
+      try { cmd.run(); }
+      catch (err) { toast(`命令执行失败：${err.message}`, "err"); }
+    }, 0);
+  }
+}
+
+async function buildPaletteCommands() {
+  cmdAll = baseCommands();
+  renderCommands($("#cmd-input").value);
+  const extra = await resumeCommands();
+  if (!extra.length) return;
+  cmdAll = baseCommands().concat(extra);
+  if ($("#command-palette").open) renderCommands($("#cmd-input").value);
+}
+
+function openPalette() {
+  const dlg = $("#command-palette");
+  if (dlg.open) return;
+  cmdReturnFocus = document.activeElement;
+  const input = $("#cmd-input");
+  input.value = "";
+  cmdIndex = 0;
+  buildPaletteCommands();
+  dlg.showModal();
+  input.focus();
+}
+
+function closePalette() {
+  const dlg = $("#command-palette");
+  if (dlg.open) dlg.close();
+}
+
+function initPalette() {
+  const dlg = $("#command-palette");
+  const input = $("#cmd-input");
+
+  input.addEventListener("input", () => {
+    cmdIndex = 0;
+    renderCommands(input.value);
+  });
+  // ↑↓ Enter 仅面板内消费，不冒泡成全局快捷键
+  input.addEventListener("keydown", (ev) => {
+    if (ev.isComposing) return;
+    if (ev.key === "ArrowDown") { ev.preventDefault(); ev.stopPropagation(); setCmdIndex(cmdIndex + 1); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); ev.stopPropagation(); setCmdIndex(cmdIndex - 1); }
+    else if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); runCmd(cmdIndex); }
+  });
+  // 关闭（Esc / 执行后）时把焦点还原到触发前的元素
+  dlg.addEventListener("close", () => {
+    cmdItems = [];
+    cmdIndex = 0;
+    const back = cmdReturnFocus;
+    cmdReturnFocus = null;
+    if (back && typeof back.focus === "function" && document.contains(back)) back.focus();
+  });
+}
+
+function isComposing(ev) {
+  return !!(ev && (ev.isComposing || ev.keyCode === 229));
+}
+
+// 全局快捷键：Ctrl/Cmd+K（命令面板）、Ctrl/Cmd+S（保存，阻止浏览器默认）、Ctrl/Cmd+Enter（主操作）
+function initShortcuts() {
+  document.addEventListener("keydown", (ev) => {
+    const meta = ev.ctrlKey || ev.metaKey;
+    const key = (ev.key || "").toLowerCase();
+
+    if (meta && key === "k") {
+      ev.preventDefault();
+      const dlg = $("#command-palette");
+      if (dlg.open) closePalette(); else openPalette();
+      return;
+    }
+
+    if (meta && key === "s") {
+      // 始终阻止浏览器「保存网页」；简历工作台由 resume.js 处理保存
+      ev.preventDefault();
+      if (activeView === "profile" && !isComposing(ev)) clickEl("#btn-save-profile");
+      return;
+    }
+
+    if (meta && ev.key === "Enter" && !isComposing(ev)) {
+      const ivDlg = $("#interview-dialog");
+      if (ivDlg && ivDlg.open) { ev.preventDefault(); clickEl("#iv-submit"); return; }
+      // 工作区 Shift/Ctrl+Enter 由 chat.js 在职位名/岗位要求框上处理（避免重复触发）
+      if (activeView === "profile") { ev.preventDefault(); clickEl("#btn-save-profile"); return; }
+    }
+  });
+}
+
 // --------------------------- 启动 --------------------------- //
 async function boot() {
   // 导航
@@ -319,6 +522,10 @@ async function boot() {
 
   // 简历空状态 -> 去工作区生成
   $("#btn-studio-goto-workspace").addEventListener("click", () => switchView("workspace"));
+
+  // 命令面板 + 全局快捷键
+  initPalette();
+  initShortcuts();
 
   // 颜色模式兜底应用（index.html 早期脚本已做，此处保证 JS 状态一致）
   applyTheme(currentTheme());

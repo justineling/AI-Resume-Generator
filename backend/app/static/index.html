@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=8" />
+  <link rel="stylesheet" href="/static/css/app.css?v=9" />
   <script>
     /* 在首帧之前套用已保存的颜色模式，避免先闪一下深色再切浅色 */
     (function () {
@@ -73,6 +73,7 @@
           <p class="view-lede">这里的资料是简历的"素材库"。模型只会从你填写的内容里取材，不会凭空编造学历、公司与数字。</p>
           <div class="view-head-actions">
             <button class="btn btn-ghost" type="button" id="btn-profile-ai">让 AI 帮我完善</button>
+            <button class="btn btn-ghost" type="button" id="btn-profile-import-text">粘贴简历文本导入</button>
           </div>
           <span class="title-rule" aria-hidden="true"></span>
         </header>
@@ -254,10 +255,11 @@
 
               <div class="ws-composer">
                 <div class="ws-composer-fields">
-                  <label class="field">
+                  <label class="field field-secondary">
                     <span>职位名称 / JOB TITLE</span>
                     <input id="ws-title-input" type="text" autocomplete="off" spellcheck="false"
-                           placeholder="例如：Senior Frontend Engineer" />
+                           placeholder="例如：Senior Frontend Engineer" aria-describedby="ws-title-hint" />
+                    <small class="field-hint" id="ws-title-hint">可留空 —— 生成时会自动识别职位名称</small>
                   </label>
                   <label class="field">
                     <span>岗位要求 / JOB REQUIREMENTS</span>
@@ -267,6 +269,7 @@
                 </div>
                 <div class="ws-composer-side">
                   <button class="btn btn-primary" type="button" id="btn-chat-generate">生成简历</button>
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-chat-regenerate" hidden>重新生成</button>
                   <button class="btn btn-ghost" type="button" id="btn-chat-cancel" hidden>取消生成</button>
                   <button class="btn btn-ghost" type="button" id="btn-chat-retry" hidden>重试</button>
                   <p class="composer-status" id="ws-composer-status" role="status" aria-live="polite"></p>
@@ -489,8 +492,44 @@
     </div>
   </dialog>
 
+  <!-- ================= 粘贴简历文本 -> 解析填充资料 ================= -->
+  <dialog id="resume-import-dialog" class="dialog dialog-wide" aria-labelledby="ri-title">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <span class="panel-code">PF-08 / IMPORT TEXT</span>
+        <h2 id="ri-title">粘贴简历文本导入</h2>
+      </header>
+      <p class="hint">把现有简历的全文（纯文本即可）粘贴到下面，系统会用 AI 解析成结构化资料并填入下方表单。
+        <strong>注意：这会覆盖当前资料表单内容。</strong></p>
+      <label class="field field-block">
+        <span>简历原文</span>
+        <textarea id="ri-text" rows="12" spellcheck="false"
+                  placeholder="粘贴你现有简历的全文…"></textarea>
+      </label>
+      <p class="test-result" id="ri-status" role="status" aria-live="polite"></p>
+      <div class="action-bar">
+        <button class="btn btn-primary" type="button" id="btn-import-text-run">解析并填入</button>
+        <button class="btn btn-ghost" type="button" id="btn-import-text-cancel">取消</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ================= 命令面板（Ctrl/Cmd + K） ================= -->
+  <dialog id="command-palette" class="dialog dialog-cmd" aria-label="命令面板">
+    <div class="dialog-form cmd-form">
+      <div class="cmd-input-row">
+        <span class="cmd-mark" aria-hidden="true"></span>
+        <input id="cmd-input" type="text" role="combobox" aria-expanded="true"
+               aria-controls="cmd-list" aria-autocomplete="list" autocomplete="off" spellcheck="false"
+               placeholder="输入命令…（↑↓ 选择，Enter 执行，Esc 关闭）" />
+      </div>
+      <div id="cmd-list" class="cmd-list" role="listbox" aria-label="命令列表"></div>
+      <p class="cmd-empty" id="cmd-empty" hidden>没有匹配的命令</p>
+    </div>
+  </dialog>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/static/js/app.js?v=8"></script>
+  <script type="module" src="/static/js/app.js?v=9"></script>
 </body>
 </html>

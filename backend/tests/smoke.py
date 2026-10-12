@@ -12,7 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from _dbguard import warn_if_shared_db  # noqa: E402
+from _dbguard import use_isolated_db, warn_if_shared_db  # noqa: E402
+
+# 未显式指定 DATABASE_URL 时自动切到隔离库。
+# 必须在 import app.* 之前：app.config.settings 在导入时读取该环境变量。
+use_isolated_db("smoke")
+
 from app.main import app  # noqa: E402
 
 PROFILE = {
