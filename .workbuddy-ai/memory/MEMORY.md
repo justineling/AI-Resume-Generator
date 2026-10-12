@@ -133,11 +133,30 @@
   **不要逐个列 `type="text"/"number"/"password"`** —— 新增 `type="url"`（招聘链接框）时漏样式，
   表现为「深色下文字看不清」（无背景/无颜色，与底色撞色）。这类漏样式**不报错、只静默失效**。
 - **定期复检失效的 CSS 变量**：把 `^\s*(--x)\s*:` 的定义集与 `var\((--x)` 的引用集求差。
+- **同时检查自引用** `^--(\w+):\s*var\(--\1\)` —— 批量替换 token 时正则容易**误伤定义行**，
+  产生 `--x: var(--x)`（循环引用 = 值无效，且不报错）。
+  我曾因此让深色下 6 个叠加色（`--tint-*` / `--signal-tint*` / `--grid-line`）全部失效。
   已发现过 `var(--mono)`（应为 `--font-mono`）、`var(--text)`（应为 `--fg`）等拼写错误。
 - 浅色主题下所有叠加色必须走 token（见上文颜色模式）。
 
+## UX 约定（减少操作量）
+- **先量化「操作量」再动手**：列全部按钮入口、统计表单字段规模、追问「这步能否省」。
+  例：资料页 = 9 个标量字段 + 7 类卡片列表 → 手填最繁琐 → 用「粘贴简历文本 → AI 解析」替代。
+- **命令面板 `Ctrl/Cmd+K`**（`#command-palette`，15 条命令分 4 组）；大厂标配，减少「找按钮」。
+- **快捷键**：`Ctrl+K` 面板 / `Ctrl+Enter` 上下文主操作 / `Ctrl+S` 保存。
+  **必须带 `isComposing` 守卫**（中文输入法组合时不触发）。
+- **能自动推断的字段不要让用户填**：职位名称实际非必填（后端从 JD 解析回填），
+  UI 若让它看起来必填就是纯浪费。
+- 命令面板等浮层：dialog + `role=listbox/option` + `aria-selected` + `aria-activedescendant` +
+  焦点入框与关闭后还原；图标用 **CSS 绘制，禁止 emoji**。
+
 ## 测试数据隔离（重要）
-- **所有 UI 测试脚本默认自起隔离服务**（`backend/tests/_ui_server.py`）：
+- **所有测试默认隔离**（两层）：
+  · UI 测试（Playwright）→ `backend/tests/_ui_server.py` 自起隔离服务；
+  · 进程内测试（TestClient）→ `_dbguard.use_isolated_db()` 未显式设 DATABASE_URL 时**自动**切到 `data/_<script>.db`
+    （**必须在 `import app.*` 之前调用** —— `app.config.settings` 在导入时读环境变量）。
+  **光靠打印警告没用**，必须默认隔离 —— 实测「忘设 DATABASE_URL」曾两次写进用户库。
+- **UI 测试脚本默认自起隔离服务**（`backend/tests/_ui_server.py`）：
   ui_check 8121 / e2e_verify 8122 / settings_ui_check 8124 / chat_e2e 8125 / iv_check 8126。
   仅当显式设置 `BASE_URL` 时才用外部服务（会打印风险提示）。
 - **绝不能让 UI 测试默认打 8000** —— 8000 是开发服务 + 用户真实库 `data/app.db`，
