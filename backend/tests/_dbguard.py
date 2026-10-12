@@ -44,6 +44,15 @@ def use_isolated_db(script_name: str) -> str:
         return cur
 
     url = f"sqlite:///{(Path(__file__).resolve().parent.parent.parent / 'data' / f'_{script_name}.db').as_posix()}"
+    # 起始清空：保证每次运行的起点干净、测试幂等（复用上次的数据会让结果受影响）。
+    # 此处尚未建立连接（必须在 import app.* 之前调用），可安全删除文件。
+    for suffix in ("", "-wal", "-shm"):
+        f = Path(__file__).resolve().parent.parent.parent / "data" / f"_{script_name}.db{suffix}"
+        if f.exists():
+            try:
+                f.unlink()
+            except OSError:
+                pass
     os.environ["DATABASE_URL"] = url
     print(f"[隔离库] 未指定 DATABASE_URL，自动使用 {url}（不会写入用户库）", flush=True)
     return url
