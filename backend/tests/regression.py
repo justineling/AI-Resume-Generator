@@ -1399,6 +1399,74 @@ def main() -> int:
         # 还原一份干净资料，避免影响后续
         client.put("/api/profile", json={"name": "张三"})
 
+        # ---------------- F4 工作区粘贴简历 -> 增补进对话资料快照 ----------------
+        print("\n[F4] 工作区粘贴简历（/api/chats/{id}/profile/import-text，只增补不覆盖）")
+        RESUME_TXT2 = (
+            "王小明\n"
+            "高级前端工程师 | 深圳\n"
+            "邮箱: wangxm@example.com\n"
+            "\n"
+            "工作经历\n"
+            "2020.06 - 至今  某某科技 | 高级前端工程师\n"
+            "- 主导管理后台性能优化，首屏时间从 3.2s 降到 1.1s\n"
+            "\n"
+            "专业技能\n"
+            "TypeScript, React, Vite\n"
+        )
+
+        # 1) 正常解析：快照被增补 + profile_dirty=True + 追加一条 notice 消息
+        cidA = client.post("/api/chats", json={"title": "粘贴简历A"}).json()["id"]
+        exp_before = len(client.get(f"/api/chats/{cidA}").json()["profile_snapshot"].get("experiences") or [])
+        r = client.post(f"/api/chats/{cidA}/profile/import-text", json={"text": RESUME_TXT2})
+        check("chat 粘贴简历 -> 200", r.status_code == 200, r.status_code)
+        snapA = r.json()["profile_snapshot"] or {}
+        check("chat 粘贴简历 -> 快照新增工作经历",
+              len(snapA.get("experiences") or []) > exp_before,
+              f"{exp_before} -> {len(snapA.get('experiences') or [])}")
+        check("chat 粘贴简历 -> 快照新增技能（>=1）", len(snapA.get("skills") or []) >= 1,
+              len(snapA.get("skills") or []))
+        check("chat 粘贴简历 -> profile_dirty=True", r.json()["profile_dirty"] is True)
+        detailA = client.get(f"/api/chats/{cidA}").json()
+        check("chat 粘贴简历 -> 追加 profile_import 消息（kind=notice）",
+              any(m.get("kind") == "notice" and (m.get("meta") or {}).get("type") == "profile_import"
+                  for m in detailA.get("messages") or []),
+              len(detailA.get("messages") or []))
+
+        # 2) 只增补不覆盖：已有非空字段（用户手填 / 之前问答）必须保留
+        cidB = client.post("/api/chats", json={"title": "粘贴简历B"}).json()["id"]
+        client.put(f"/api/chats/{cidB}/profile", json={
+            "name": "不覆盖标记",
+            "experiences": [{"company": "ACME 科技", "title": "后端工程师", "start": "2019", "end": "2021",
+                             "achievements": ["已有经历，不应被覆盖"], "tech": ["Python"]}],
+        })
+        r = client.post(f"/api/chats/{cidB}/profile/import-text", json={"text": RESUME_TXT2})
+        snapB = r.json()["profile_snapshot"] or {}
+        check("只增补不覆盖：已有姓名保留", snapB.get("name") == "不覆盖标记", snapB.get("name"))
+        check("只增补不覆盖：解析出的经历被追加（去重后 >=2）",
+              len(snapB.get("experiences") or []) >= 2, len(snapB.get("experiences") or []))
+        check("只增补不覆盖：原有经历仍在",
+              any(e.get("company") == "ACME 科技" for e in (snapB.get("experiences") or [])))
+
+        # 3) 空文本 -> 400 且中文可读
+        r = client.post(f"/api/chats/{cidB}/profile/import-text", json={"text": "   "})
+        check("chat 粘贴空文本 -> 400 且文案可读",
+              r.status_code == 400 and "粘贴" in r.json().get("detail", ""),
+              f"{r.status_code} {r.json().get('detail')}")
+
+        # 4) 快照为空时：直接采用解析结果
+        cidC = client.post("/api/chats", json={"title": "空快照"}).json()["id"]
+        client.put(f"/api/chats/{cidC}/profile", json={})       # 清空为全空 ProfileIn
+        check("准备：快照已清空（无姓名）",
+              not (client.get(f"/api/chats/{cidC}").json()["profile_snapshot"] or {}).get("name"))
+        r = client.post(f"/api/chats/{cidC}/profile/import-text", json={"text": RESUME_TXT2})
+        snapC = r.json()["profile_snapshot"] or {}
+        check("空快照 -> 直接采用解析结果（姓名）", snapC.get("name") == "王小明", snapC.get("name"))
+        check("空快照 -> 直接采用解析结果（经历 >=1）", len(snapC.get("experiences") or []) >= 1,
+              len(snapC.get("experiences") or []))
+
+        for _cid in (cidA, cidB, cidC):
+            client.delete(f"/api/chats/{_cid}?cascade=true")
+
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:
         print("存在失败用例 ❌")

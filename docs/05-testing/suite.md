@@ -16,7 +16,7 @@
 | `smoke.py` | 进程内（TestClient） | 无需端口 | `data/_smoke.db`（自动隔离） | 主链路冒烟：资料→批量建任务→并发生成→取简历→AI 编辑→改版式→导出/预览→设置 |
 | `regression.py` | 进程内（TestClient） | 无需端口 | `data/_regression.db`（自动隔离） | 已确认缺陷回归 + 契约：P0-1~P2-13、P3-3、P4-1~P4-4、F1~F4 |
 | `progress_probe.py` | 进程内（TestClient） | 无需端口 | `data/_progress_probe.db`（自动隔离） | 进度重置：重排队（queued）与最终失败（failed）时 `progress` 归零 |
-| `xss_probe.py` | 浏览器（headless Edge） | **8123** | `data/xss_probe.db` | XSS 双层防御：ai-edit 入库净化（nh3）+ CSP 兜底 |
+| `xss_probe.py` | 浏览器（headless Edge） | **8123** | `data/_ui_xss_probe.db` | XSS 双层防御：ai-edit 入库净化（nh3）+ CSP 兜底 |
 | `e2e_verify.py` | 浏览器（headless Edge） | **8122** | `data/_ui_e2e_verify.db` | 净化器无损/中和、CSP、5 种版式的浏览器布局几何、关键 API 契约 |
 | `chat_e2e.py` | 浏览器（headless Edge） | **8125** | `data/_ui_chat_e2e.db` | 聊天式工作区端到端：三视图→新建→贴 JD→生成→消息流/雇主问题→覆盖清单→设置 |
 | `ui_check.py` | 浏览器（headless Edge） | **8121** | `data/_ui_ui_check.db` | 全流程走查 + 逐步截图；**强制 0 控制台 error** |
@@ -165,4 +165,5 @@ NO_PROXY=localhost,127.0.0.1 ./.venv/Scripts/python.exe backend/tests/settings_u
 
 - 截图：`backend/tests/shots/`（已被 `.gitignore` 忽略）。文件名见各脚本内的 `page.screenshot(...)`，
   例如 `ux-01-command-palette-dark.png`、`ux-07-paste-resume-confirm.png`、`ux-08-cmd-url-mode.png`。
-- 隔离数据库：`data/_*.db`、`data/xss_probe.db`、`data/settings_ui.db`（运行结束时多数会被清掉）。
+- 隔离数据库：`data/_<script>.db`（进程内测试）、`data/_ui_<name>.db`（UI 测试自起服务）、
+  `data/settings_ui.db`（settings_ui_check 自己的隔离库）（运行结束时多数会被清掉）。

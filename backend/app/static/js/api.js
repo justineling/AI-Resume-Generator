@@ -46,6 +46,8 @@ export const api = {
   getChatProfile: (id) => api.get(`/api/chats/${id}/profile`),
   saveChatProfile: (id, p) => api.put(`/api/chats/${id}/profile`, p),
   resetChatProfile: (id) => api.post(`/api/chats/${id}/profile/reset`),
+  // 工作区内粘贴简历原文 -> 解析并增补进本对话资料快照（只增补，不覆盖）
+  importChatProfileText: (id, text) => api.post(`/api/chats/${id}/profile/import-text`, { text }),
   // 消息
   listChatMessages: (id) => api.get(`/api/chats/${id}/messages`),
   postChatMessage: (id, payload) => api.post(`/api/chats/${id}/messages`, payload),

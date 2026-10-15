@@ -9,18 +9,16 @@
 """
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 
 import httpx
 
+from _ui_server import spawn_isolated_server, stop_isolated_server
+
 ROOT = Path(__file__).resolve().parent.parent.parent  # 项目根目录
 PORT = 8123
 BASE = f"http://127.0.0.1:{PORT}"
-DB_FILE = ROOT / "data" / "xss_probe.db"
 
 PROFILE = {
     "name": "张三",
@@ -58,36 +56,14 @@ def check(name: str, cond: bool, extra: object = "") -> None:
         print(f"  \u2717 {name}  -> {extra!r}")
 
 
-def _wait_server(timeout: float = 40.0) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            if httpx.get(f"{BASE}/api/health", timeout=1.5).status_code == 200:
-                return True
-        except Exception:
-            time.sleep(0.3)
-    return False
-
-
 def main() -> int:
-    for suffix in ("", "-wal", "-shm"):
-        f = Path(str(DB_FILE) + suffix)
-        if f.exists():
-            f.unlink()
-
-    env = dict(os.environ)
-    env["DATABASE_URL"] = f"sqlite:///{DB_FILE.as_posix()}"
-    env["PORT"] = str(PORT)
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
-         "--host", "127.0.0.1", "--port", str(PORT), "--log-level", "warning"],
-        cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )
+    # 复用共享 helper（与 ui_check / e2e_verify / chat_e2e / iv_check 一致）：
+    #   · 先检查端口是否空闲（占用时给出明确错误，而不是启动失败后无人知晓）
+    #   · 清理隔离库时用 try/except —— Windows 上文件句柄释放有延迟，
+    #     此前这里的裸 unlink() 遇到瞬时文件锁会 FileNotFoundError/PermissionError 直接崩溃
+    #   · 退出时统一 terminate + wait
+    proc, base, db_file = spawn_isolated_server("xss_probe", PORT)
     try:
-        if not _wait_server():
-            print("服务器未就绪 ❌")
-            return 1
-
         client = httpx.Client(base_url=BASE, timeout=30)
         client.put("/api/profile", json=PROFILE)
         tid = client.post("/api/tasks", json={"title": "XSS 探针", "raw_text": JOB}).json()["id"]
@@ -153,15 +129,7 @@ def main() -> int:
 
         client.close()
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except Exception:
-            proc.kill()
-        for suffix in ("", "-wal", "-shm"):
-            f = Path(str(DB_FILE) + suffix)
-            if f.exists():
-                f.unlink()
+        stop_isolated_server(proc, db_file)
 
     print(f"\nXSS 探针结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:

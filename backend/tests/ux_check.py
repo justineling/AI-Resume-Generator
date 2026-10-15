@@ -8,7 +8,11 @@
   4. 生成成功后主按钮变「查看简历 →」且点击打开简历；编辑字段后恢复「重新生成」
   5. 资料页「粘贴简历文本导入」-> 弹窗 -> 解析 -> 表单被填充（GET /api/profile 核对）
   6. 深色 / 浅色下命令面板可读、无横向溢出；375px 下不溢出
-  7. 全程 0 控制台 error/warning
+  7. 工作区粘贴简历原文 -> 确认条（只增补不覆盖）-> 确认 -> 快照写入经历/技能；
+     含「不覆盖」与「粘贴 JD 不误触发」两条反面断言；以及慢网络下新建对话期间
+     的输入不被覆盖（openChat 回填竞态）
+  8. 命令面板粘贴 URL -> 「回车即抓取」提示 -> 回车复用导入流程；Esc 两段式退出
+  9. 全程 0 控制台 error/warning
 
     NO_PROXY=localhost,127.0.0.1 ./.venv/Scripts/python.exe backend/tests/ux_check.py
 """
@@ -17,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -80,6 +85,93 @@ RESUME_TEXT = (
     "教育背景\n"
     "2014 - 2018  某某大学  软件工程\n"
 )
+
+# 工作区粘贴用的简历文本：刻意拉长（> 300 字符）+ 含多个章节词，
+# 用于验证「像一份简历」的启发式判定。
+RESUME_PASTE = (
+    "赵晓峰\n"
+    "资深全栈工程师 | 上海 | 13800001111 | zhaoxf@example.com\n"
+    "个人主页: https://github.com/zhaoxf\n"
+    "\n"
+    "个人简介\n"
+    "8 年全栈开发经验，主导过多个高并发系统的架构设计与性能优化，"
+    "熟悉云原生与 DevOps 实践，注重工程质量与可维护性。\n"
+    "\n"
+    "工作经历\n"
+    "2021.03 - 至今  星辰科技 | 资深全栈工程师\n"
+    "- 主导订单中台重构，接口 P99 从 800ms 降到 120ms，支撑日均千万级请求\n"
+    "- 搭建前端组件库与自动化测试体系，回归缺陷率下降 60%\n"
+    "- 推动容器化与灰度发布，故障回滚时间从 30 分钟降到 2 分钟\n"
+    "\n"
+    "2018.07 - 2021.02  云图信息 | 全栈工程师\n"
+    "- 负责数据可视化平台前端架构，首屏时间优化 45%\n"
+    "\n"
+    "项目经历\n"
+    "统一网关\n"
+    "- 为 30+ 内部服务提供统一鉴权与限流\n"
+    "\n"
+    "专业技能\n"
+    "TypeScript, React, Node.js, Python, PostgreSQL, Redis, Docker, Kubernetes\n"
+    "\n"
+    "教育背景\n"
+    "2014 - 2018  某某大学  软件工程\n"
+)
+
+# 命令面板 URL 模式用的「快速失败」链接（本机未监听端口，抓取会立即被拒）。
+CMD_URL = "http://127.0.0.1:9/nope"
+
+
+def _dispatch_paste(page, selector: str, text: str) -> None:
+    """派发一个带 clipboardData 的合成 paste 事件（Playwright 无直接设置剪贴板 API）。"""
+    page.evaluate(
+        """([sel, text]) => {
+            const el = document.querySelector(sel);
+            const dt = new DataTransfer();
+            dt.setData('text/plain', text);
+            el.dispatchEvent(new ClipboardEvent('paste', {
+                clipboardData: dt, bubbles: true, cancelable: true,
+            }));
+        }""",
+        [selector, text],
+    )
+
+
+def _newest_chat_id(client: httpx.Client) -> int:
+    """取当前最新的对话 id（刚新建的那条）。"""
+    chats = client.get("/api/chats").json()
+    return max(int(ch["id"]) for ch in chats)
+
+
+
+def _new_chat(page) -> None:
+    """点「新建」并**确认新对话已真正打开**，再继续操作。
+
+    两个坑都要绕开：
+    1. 若当前 composer 有未保存内容，新建会弹 confirm（会被 Playwright 默认“取消”而中止）
+       —— 这里注册一次性 dialog 处理器接受它；
+    2. 新建是异步的（POST -> 刷新列表 -> openChat）。若上一个对话的 composer 恰好为空，
+       「等输入框为空」会立刻通过、抢在 openChat 之前，随后 fillComposer 覆盖刚填入的内容。
+       故改为等 #ws-code 变成新的 CHAT-xxxx（renderHead 在 fillComposer 之后执行）。
+    """
+    prev = page.text_content("#ws-code") or ""
+
+    def _accept(d):
+        d.accept()
+
+    page.on("dialog", _accept)
+    try:
+        page.click("#btn-new-chat")
+        page.wait_for_selector("#ws-work:not([hidden])", timeout=15000)
+        page.wait_for_function(
+            "(before) => { const c = document.querySelector('#ws-code');"
+            " return !!c && !!c.textContent && c.textContent !== before; }",
+            arg=prev, timeout=15000)
+        page.wait_for_function(
+            "() => { const t = document.querySelector('#ws-title-input');"
+            " const r = document.querySelector('#ws-input');"
+            " return t && r && t.value === '' && r.value === ''; }", timeout=15000)
+    finally:
+        page.remove_listener("dialog", _accept)
 
 
 def _run(base: str) -> int:
@@ -308,7 +400,141 @@ def _run(base: str) -> int:
         page.click('#cmd-list .cmd-item')
         page.wait_for_timeout(400)
 
-        print("\n=== 7. 控制台无 error / warning ===")
+        # ================= 7. 工作区粘贴简历原文 -> 解析并写入本对话资料 =================
+        print("\n=== 7. 工作区粘贴简历原文 -> 解析并写入本对话资料（只增补，不覆盖）===")
+        page.set_viewport_size({"width": 1440, "height": 960})
+        page.click('.rail-item[data-view="workspace"]')
+        page.wait_for_timeout(300)
+        _new_chat(page)
+        cid_a = _newest_chat_id(c)
+
+        # 7.1 粘贴简历 -> 确认条 -> 确认 -> 写入快照
+        _dispatch_paste(page, "#ws-stream", RESUME_PASTE)
+        page.wait_for_selector("#resume-paste-dialog[open]", timeout=8000)
+        page.wait_for_timeout(200)
+        dlg_text = page.text_content("#resume-paste-dialog") or ""
+        check("粘贴简历文本 -> 弹出确认（含「只增补，不覆盖」）", "只增补" in dlg_text, dlg_text[:60])
+        page.screenshot(path=str(SHOTS / "ux-07-paste-resume-confirm.png"))
+        page.click("#btn-resume-paste-confirm")
+        page.wait_for_function("() => !document.querySelector('#resume-paste-dialog').open", timeout=30000)
+        page.wait_for_timeout(700)
+        check("确认后 toast 提示「已解析并写入本对话资料」",
+              "已解析并写入本对话资料" in (page.text_content("#toasts") or ""),
+              (page.text_content("#toasts") or "")[:60])
+        snap_a = (c.get(f"/api/chats/{cid_a}").json().get("profile_snapshot") or {})
+        check("确认后快照写入工作经历（>=1）", len(snap_a.get("experiences") or []) >= 1,
+              len(snap_a.get("experiences") or []))
+        check("确认后快照写入技能（>=1）", len(snap_a.get("skills") or []) >= 1,
+              len(snap_a.get("skills") or []))
+
+        # 7.2 不覆盖：先给对话设一个已有字段，再导入，验证该字段未被改写
+        _new_chat(page)
+        cid_b = _newest_chat_id(c)
+        c.put(f"/api/chats/{cid_b}/profile", json={
+            "name": "不覆盖标记",
+            "experiences": [{"company": "ACME 科技", "title": "后端工程师", "start": "2019", "end": "2021",
+                             "achievements": ["已有经历，不应被覆盖"], "tech": ["Python"]}],
+        })
+        _dispatch_paste(page, "#ws-stream", RESUME_PASTE)
+        page.wait_for_selector("#resume-paste-dialog[open]", timeout=8000)
+        page.wait_for_timeout(150)
+        page.click("#btn-resume-paste-confirm")
+        page.wait_for_function("() => !document.querySelector('#resume-paste-dialog').open", timeout=30000)
+        page.wait_for_timeout(600)
+        snap_b = (c.get(f"/api/chats/{cid_b}").json().get("profile_snapshot") or {})
+        check("不覆盖：已设定的姓名未被改写", snap_b.get("name") == "不覆盖标记", snap_b.get("name"))
+        check("不覆盖：解析出的经历被追加且原有经历仍在",
+              len(snap_b.get("experiences") or []) >= 2
+              and any(e.get("company") == "ACME 科技" for e in (snap_b.get("experiences") or [])),
+              len(snap_b.get("experiences") or []))
+
+        # 7.3 岗位要求（非简历）粘贴：不误触发简历解析，保持原路径
+        _new_chat(page)
+        # (a) 在岗位要求框内粘贴 -> 保持既有行为（填入 + 自动回填职位名），不弹简历确认
+        page.fill("#ws-input", JD)
+        page.dispatch_event("#ws-input", "paste")
+        page.wait_for_timeout(300)
+        check("岗位要求框内粘贴 -> 不弹简历确认", page.eval_on_selector("#resume-paste-dialog", "e=>e.open") is False)
+        check("岗位要求框内粘贴 -> 仍自动回填职位名",
+              page.input_value("#ws-title-input") == "Senior Frontend Engineer",
+              page.input_value("#ws-title-input"))
+        # (b) 在工作区空白处粘贴 JD（非简历文本）-> 不弹简历确认
+        _dispatch_paste(page, "#ws-stream", JD)
+        page.wait_for_timeout(300)
+        check("工作区粘贴 JD（非简历）-> 不弹简历确认",
+              page.eval_on_selector("#resume-paste-dialog", "e=>e.open") is False)
+
+        # 7.4 新建对话期间的输入不被覆盖（模拟慢网络）
+        # 产品缺陷：createChat 网络往返期间 UI 可交互，openChat 回来时若用新对话的
+        # 空值覆盖 composer，会吞掉用户刚打的字。用 page.route 给 POST /api/chats
+        # 加 1.5s 延迟，点「新建」后立刻打字，验证输入仍在。
+        print("\n=== 7.4 新建对话期间输入不被覆盖（慢网络）===")
+        _dlg: list[str] = []
+
+        def _accept_dialog(d):
+            _dlg.append(d.message)
+            d.accept()
+
+        def _slow_post_chats(route):
+            if route.request.method == "POST":
+                time.sleep(1.5)
+            route.continue_()
+
+        page.on("dialog", _accept_dialog)
+        page.route("**/api/chats", _slow_post_chats)
+        try:
+            page.click("#btn-new-chat")          # 若 composer 有未保存内容会弹 confirm，此处接受
+            page.wait_for_timeout(150)           # 处于 creatingChat 窗口（POST 仍挂起）
+            page.fill("#ws-input", "SLOWTYPED 新建期间输入的内容")
+            page.wait_for_timeout(2500)          # 等 createChat + openChat 完成
+            check("慢网络下新建期间的输入未被覆盖",
+                  "SLOWTYPED" in page.input_value("#ws-input"),
+                  page.input_value("#ws-input")[:36])
+        finally:
+            page.unroute("**/api/chats")
+            page.remove_listener("dialog", _accept_dialog)
+
+        # ================= 8. 命令面板粘贴 URL -> 回车即抓取 =================
+        print("\n=== 8. 命令面板粘贴 URL -> 回车即抓取该链接 ===")
+        page.click('.rail-item[data-view="workspace"]')
+        page.wait_for_timeout(200)
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("#command-palette[open]", timeout=8000)
+        page.wait_for_timeout(250)
+        _dispatch_paste(page, "#cmd-input", CMD_URL)
+        page.wait_for_timeout(300)
+        check("粘贴 URL -> 出现「回车即抓取该链接」提示",
+              page.is_visible("#cmd-url-hint") is True
+              and "回车即抓取" in (page.text_content("#cmd-url-hint") or ""),
+              (page.text_content("#cmd-url-hint") or ""))
+        check("提示中显示该链接", CMD_URL in (page.text_content("#cmd-url-value") or ""),
+              page.text_content("#cmd-url-value"))
+        n_opts = page.eval_on_selector_all('#cmd-list [role="option"]', "els=>els.length")
+        first_opt = page.text_content('#cmd-list [role="option"]') or ""
+        check("URL 模式仅保留「导入该链接」一条命令", n_opts == 1 and "导入该链接" in first_opt,
+              f"{n_opts} :: {first_opt[:40]}")
+        page.screenshot(path=str(SHOTS / "ux-08-cmd-url-mode.png"))
+        # 第一次 Esc -> 退出 URL 模式（面板仍开）
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(250)
+        check("第一次 Esc 退出 URL 模式（面板仍开）",
+              page.eval_on_selector("#command-palette", "e=>e.open") is True
+              and page.is_visible("#cmd-url-hint") is False)
+        # 再次粘贴 URL 并回车 -> 复用「从链接导入」流程
+        _dispatch_paste(page, "#cmd-input", CMD_URL)
+        page.wait_for_timeout(250)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(700)
+        check("回车后命令面板关闭", page.eval_on_selector("#command-palette", "e=>e.open") is False)
+        check("回车后打开导入框并填入该 URL",
+              page.is_visible("#import-url-box") is True
+              and page.input_value("#import-url-input") == CMD_URL,
+              page.input_value("#import-url-input"))
+        # 收尾：关闭导入框，避免影响后续控制台断言
+        page.click("#btn-import-cancel")
+        page.wait_for_timeout(300)
+
+        print("\n=== 9. 控制台无 error / warning ===")
         check("控制台 0 条 error/warning", not console, console[:4])
 
     print("\n" + "=" * 64)

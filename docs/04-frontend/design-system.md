@@ -62,6 +62,10 @@
 | `--state-glow` | `rgba(200,235,33,0.45)` | `rgba(95,125,0,0.35)` | 保存指示器呼吸光圈 |
 | `--danger-tint` | `rgba(255,90,90,0.05)` | `rgba(198,40,40,0.07)` | 危险淡底 |
 | `--scrim` | `rgba(4,8,10,0.78)` | `rgba(16,23,26,0.45)` | 弹窗遮罩 |
+| `--signal-hover` | `#4fdcff` | `#075a75` | 主按钮 hover 底色（浅色需更深，否则白字看不清） |
+| `--on-signal-dim` | `rgba(4,24,31,0.6)` | `rgba(255,255,255,0.6)` | 主按钮 disabled 文字色 |
+| `--paper` | `#ffffff` | `#ffffff` | 简历预览「纸张」底：**与主题无关**，始终为白 |
+| `--muted-soft` | `rgba(123,133,137,0.7)` | `rgba(93,104,109,0.8)` | 占位符 / 弱化文字（`--muted` 的柔和版） |
 
 ### 2.3 字体
 
@@ -160,7 +164,13 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
 
 ## 5. 代码与直觉不符之处（供参考）
 
-- **`app.css:542` 的 `#4fdcff` 与 `543` 的 `rgba(4,24,31,0.6)` 是硬编码**：`btn-primary:hover` 与 `:disabled` 没用 token，浅色模式下这两个态会沿用深色的青/深值。属遗留小瑕疵，改样式时若统一 token 化可一并处理（本文只记录，未改代码）。
+- **`.btn-primary` 的三态已全部 token 化**（曾为硬编码，见下）：
+  `:hover` → `var(--signal-hover)`、`:disabled` 文字 → `var(--on-signal-dim)`、`::before` → `var(--on-signal)`。
+  **修复原因**：`.btn-primary` 的文字色是 `var(--on-signal)`，浅色下是**白色**，而 hover 底曾是硬编码的亮青 `#4fdcff`
+  → 白字压亮青，对比度只有约 **1.5**（AA 要求 ≥ 4.5），文字几乎看不见。现浅色 hover 用 `#075a75`，对比度 **7.70**。
+- **`disabled` 态对比度仍低（深色 1.32 / 浅色 1.52，含 `opacity:0.38` 复合后）**，这是**有意保留**的：
+  WCAG 2.1 SC 1.4.3 明确豁免 inactive/disabled 控件；低对比本身就是「不可点」的视觉信号；
+  用户此时需要的信息由旁边的状态文案承担（如「岗位要求为空：生成前请先粘贴 JD。」，全对比度）。
 - **较新的组件已遵守 token 规则**：命令面板的 `.cmd-url-hint`（粘贴 URL 提示条）全部用 `--signal-tint` / `--signal` / `--rule` / `--fg-dim` / `--font-mono`，是「正确用法」的参照。
 
 ---

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light" />
   <title>AI RESUME GENERATOR / 岗位定制简历</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080a0b'/%3E%3Crect x='6' y='14' width='4' height='12' fill='%2318d1ff' opacity='.55'/%3E%3Crect x='14' y='6' width='4' height='20' fill='%2318d1ff'/%3E%3Crect x='22' y='11' width='4' height='15' fill='%2318d1ff' opacity='.75'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/app.css?v=9" />
+  <link rel="stylesheet" href="/static/css/app.css?v=12" />
   <script>
     /* 在首帧之前套用已保存的颜色模式，避免先闪一下深色再切浅色 */
     (function () {
@@ -514,6 +514,22 @@
     </div>
   </dialog>
 
+  <!-- ================= 工作区内粘贴简历原文 -> 确认后增补进本对话资料 ================= -->
+  <dialog id="resume-paste-dialog" class="dialog" aria-labelledby="rp-title">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <span class="panel-code">CH-02 / PASTE RESUME</span>
+        <h2 id="rp-title">检测到简历文本</h2>
+      </header>
+      <p class="hint" id="rp-message">检测到简历文本，是否解析并写入本对话的资料？（只增补，不覆盖）</p>
+      <p class="test-result" id="rp-status" role="status" aria-live="polite"></p>
+      <div class="action-bar">
+        <button class="btn btn-primary" type="button" id="btn-resume-paste-confirm">解析并写入</button>
+        <button class="btn btn-ghost" type="button" id="btn-resume-paste-cancel">取消</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- ================= 命令面板（Ctrl/Cmd + K） ================= -->
   <dialog id="command-palette" class="dialog dialog-cmd" aria-label="命令面板">
     <div class="dialog-form cmd-form">
@@ -523,6 +539,10 @@
                aria-controls="cmd-list" aria-autocomplete="list" autocomplete="off" spellcheck="false"
                placeholder="输入命令…（↑↓ 选择，Enter 执行，Esc 关闭）" />
       </div>
+      <p class="cmd-url-hint" id="cmd-url-hint" hidden>
+        <span class="cmd-url-label">回车即抓取该链接</span>
+        <span class="cmd-url-value" id="cmd-url-value"></span>
+      </p>
       <div id="cmd-list" class="cmd-list" role="listbox" aria-label="命令列表"></div>
       <p class="cmd-empty" id="cmd-empty" hidden>没有匹配的命令</p>
     </div>
@@ -530,6 +550,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script type="module" src="/static/js/app.js?v=9"></script>
+  <script type="module" src="/static/js/app.js?v=12"></script>
 </body>
 </html>

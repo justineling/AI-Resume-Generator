@@ -137,3 +137,86 @@ async def parse_profile_text(text: str, client: Optional[LLMClient]) -> dict[str
         except (LLMError, ValueError):
             pass  # 回落启发式
     return normalize_profile(parse_resume_text(text))
+
+
+# --------------------------------------------------------------------------- #
+# 合并（只增补，不覆盖）
+# --------------------------------------------------------------------------- #
+#: 各列表字段的「去重身份键」。按这些字段判断一条记录是否已存在，
+#: 避免同一段经历/同一个技能被重复追加。
+_IDENTITY: dict[str, tuple[str, ...]] = {
+    "links": ("url", "label"),
+    "experiences": ("company", "title"),
+    "projects": ("name",),
+    "skills": ("name",),
+    "education": ("school", "degree", "major"),
+    "certificates": ("name",),
+    "awards": ("name",),
+    "languages": ("name",),
+}
+
+
+def _identity(rows: list[dict[str, Any]], keys: tuple[str, ...]) -> set[str]:
+    out: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        sig = "|".join(_s(row.get(k)).lower() for k in keys)
+        if sig.strip("|"):
+            out.add(sig)
+    return out
+
+
+def merge_profiles(base: Any, incoming: Any) -> dict[str, Any]:
+    """把 `incoming` **增补**进 `base`，返回新 dict（不改动入参）。
+
+    语义与「AI 问答」的回答整合一致 —— **只增补，不覆盖**：
+    - 标量字段：base 已有非空值 → 保留 base（用户手填的更可信）；base 为空 → 用 incoming 填充。
+    - 列表字段：base 在前，incoming 中「身份键」未出现的条目追加在后面（去重）。
+    - 两者都先过 :func:`normalize_profile` 收敛，保证类型安全。
+
+    这样「粘贴简历导入」不会把用户在表单里已经填好、或在之前问答中补充的内容冲掉。
+    """
+    b = normalize_profile(base)
+    inc = normalize_profile(incoming)
+
+    out: dict[str, Any] = dict(b)
+
+    # 1) 标量：只填空缺
+    for key in _SCALARS:
+        if not b.get(key) and inc.get(key):
+            out[key] = inc[key]
+    if out.get("age") in (None, 0) and inc.get("age"):
+        out["age"] = inc["age"]
+
+    # 2) 列表：去重后追加
+    for field, keys in _IDENTITY.items():
+        cur = list(b.get(field) or [])
+        seen = _identity(cur, keys)
+        for row in (inc.get(field) or []):
+            if not isinstance(row, dict):
+                continue
+            sig = "|".join(_s(row.get(k)).lower() for k in keys)
+            if sig.strip("|") and sig in seen:
+                continue
+            seen.add(sig)
+            cur.append(row)
+        out[field] = cur
+
+    # 3) extra：键级只填空缺
+    merged_extra = dict(b.get("extra") or {})
+    for k, v in (inc.get("extra") or {}).items():
+        if not merged_extra.get(k) and v:
+            merged_extra[k] = v
+    out["extra"] = merged_extra
+    return out
+
+
+def merge_summary(before: dict[str, Any], after: dict[str, Any]) -> dict[str, int]:
+    """统计本次合并各列表字段新增了多少条（用于给用户可读反馈）。"""
+    delta: dict[str, int] = {}
+    for field in _IDENTITY:
+        n = len(after.get(field) or []) - len(before.get(field) or [])
+        if n > 0:
+            delta[field] = n
+    return delta

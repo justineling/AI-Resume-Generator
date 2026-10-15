@@ -33,6 +33,7 @@ from ..schemas import (
     CoverageItem,
     CoverageOut,
     CoverageSummary,
+    ProfileImportTextIn,
     ProfileIn,
     ProfileOut,
 )
@@ -294,6 +295,79 @@ def reset_chat_profile(chat_id: int, session: Session = Depends(get_session)) ->
     chat.profile_dirty = False
     chat.updated_at = datetime.now()
     session.add(chat)
+    session.commit()
+    session.refresh(chat)
+    return _chat_out(chat, session)
+
+
+def _import_delta_text(delta: dict[str, int]) -> str:
+    """把「本次新增了多少条」转成一句可读中文（用于对话消息）。"""
+    labels = [
+        ("experiences", "段工作经历"),
+        ("projects", "个项目"),
+        ("skills", "项技能"),
+        ("education", "条教育经历"),
+        ("certificates", "个证书"),
+        ("languages", "门语言"),
+        ("awards", "项荣誉"),
+        ("links", "个链接"),
+    ]
+    parts = [f"{delta[k]} {label}" for k, label in labels if delta.get(k)]
+    return "、".join(parts) if parts else "未发现新的可增补内容"
+
+
+@router.post("/{chat_id}/profile/import-text", response_model=ChatOut)
+async def import_chat_profile_text(
+    chat_id: int, payload: ProfileImportTextIn, session: Session = Depends(get_session)
+) -> ChatOut:
+    """工作区内直接粘贴简历原文 -> 解析并**增补**进本对话的资料快照。
+
+    与「资料」页的 ``/api/profile/import-text``（整体覆盖写库）不同，这里采用与
+    「AI 问答」一致的**只增补、不覆盖**策略：已有非空字段保留（用户手填 / 之前问答
+    补充的更可信），仅用解析结果填空缺；列表字段按「身份键」去重后追加。
+
+    解析逻辑完全复用 :func:`app.profile_import.parse_profile_text`（LLM 优先，
+    失败 / 未配置 Key 时回落 ``mock.parse_resume_text`` 启发式），不重写解析。
+    """
+    from ..profile_import import (
+        has_content,
+        merge_profiles,
+        merge_summary,
+        normalize_profile,
+        parse_profile_text,
+    )
+
+    chat = _get_chat_or_404(session, chat_id)
+    if chat.status in ("running", "queued"):
+        raise HTTPException(409, "对话正在生成中，请稍后再导入资料")
+
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(400, "请先粘贴简历文本")
+
+    parsed = await parse_profile_text(text, build_client(session))
+
+    base = chat.profile_snapshot or {}
+    base_norm = normalize_profile(base)
+    if not has_content(base_norm):
+        # 快照为空（尚无任何资料）-> 直接采用解析结果
+        merged = normalize_profile(parsed)
+    else:
+        # 非空 -> 按字段合并（只增补，不覆盖）
+        merged = merge_profiles(base, parsed)
+
+    chat.profile_snapshot = merged
+    chat.profile_dirty = True            # 快照已被本对话定制
+    chat.updated_at = datetime.now()
+    session.add(chat)
+
+    delta = merge_summary(base_norm, merged)
+    # 往对话追加一条消息，便于回看（不广播，刷新后即可见）
+    session.add(ChatMessage(
+        chat_id=chat.id, role="assistant", kind="notice",
+        content=f"已解析并写入本对话资料：{_import_delta_text(delta)}（只增补，不覆盖）",
+        meta={"type": "profile_import", "added": delta},
+    ))
     session.commit()
     session.refresh(chat)
     return _chat_out(chat, session)

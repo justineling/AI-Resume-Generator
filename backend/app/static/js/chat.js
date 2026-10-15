@@ -14,9 +14,14 @@ let switchView = null;      // 视图切换回调
 // composer 两个字段「已持久化」的基准值，用于判断是否需要 PATCH / POST
 let savedTitle = "";
 let savedReq = "";
+// 是否正在「新建对话」流程中。createChat 的网络往返期间 UI 仍可交互，
+// 此标记用于避免 openChat 回填时覆盖用户已输入的内容（见 openChat）。
+let creatingChat = false;
 // 生成耗时计时
 let genStartMs = 0;
 let elapsedTimer = null;
+// 工作区粘贴的待处理简历文本（确认后再发给后端解析）
+let pendingResumeText = "";
 
 const ACTIVE_STATES = new Set(["queued", "running"]);
 const DEFAULT_TITLE = "新对话";   // 后端新建对话的默认标题，回填时视为「空」
@@ -138,6 +143,14 @@ export function initChat({ openResume, switchView: switchTo }) {
   $("#btn-chat-profile-reset").addEventListener("click", resetProfile);
   $("#btn-chat-profile-save").addEventListener("click", saveProfile);
   $("#btn-chat-profile-close").addEventListener("click", () => $("#chat-profile-dialog").close());
+
+  // 工作区粘贴简历原文 -> 确认后解析并增补进本对话资料（不覆盖）
+  document.addEventListener("paste", onWorkspacePaste);
+  $("#btn-resume-paste-confirm").addEventListener("click", confirmResumePaste);
+  $("#btn-resume-paste-cancel").addEventListener("click", () => {
+    pendingResumeText = "";
+    $("#resume-paste-dialog").close();
+  });
 }
 
 // --------------------------------------------------------------------------- //
@@ -210,8 +223,21 @@ export async function openChat(id, opts = {}) {
 
     $("#ws-empty").hidden = true;
     $("#ws-work").hidden = false;
-    // 静默刷新（WebSocket / 定时）时不要覆盖用户正在编辑的内容
-    if (!opts.silent || !composerDirty()) fillComposer(c);
+    // 先用「旧基准值」判断是否需要回填（保持既有语义：静默刷新不覆盖正在编辑的内容）
+    const dirty = composerDirty();
+    // 更新「已持久化」基准值（必须照常更新，否则 composerDirty() 恒真）
+    savedTitle = (c.title && c.title !== DEFAULT_TITLE) ? c.title : "";
+    savedReq = c.raw_text || "";
+    // 新建对话的网络往返期间 UI 可交互，用户可能已开始打字。
+    // 「新建」时 newChat 已同步清空 composer，故此时 DOM 非空即代表用户已输入，
+    // 不能用新对话的空值覆盖（否则吞掉用户输入）。
+    const userTyping = creatingChat
+      && ($("#ws-title-input").value.trim() || $("#ws-input").value.trim());
+    if ((!opts.silent || !dirty) && !userTyping) {
+      $("#ws-title-input").value = savedTitle;
+      $("#ws-input").value = savedReq;
+    }
+    updateComposerState();
     renderHead();
     renderStream();
     renderEmployerQuestions();
@@ -222,15 +248,6 @@ export async function openChat(id, opts = {}) {
   } catch (err) {
     toast(`打开对话失败：${err.message}`, "err");
   }
-}
-
-// 把当前 chat 的 title / raw_text 回填到 composer（默认标题视为空）
-function fillComposer(c) {
-  savedTitle = (c.title && c.title !== DEFAULT_TITLE) ? c.title : "";
-  savedReq = c.raw_text || "";
-  $("#ws-title-input").value = savedTitle;
-  $("#ws-input").value = savedReq;
-  updateComposerState();
 }
 
 // composer 内容是否与「已持久化」值不同（用于跳过无变化的保存与切换确认）
@@ -417,6 +434,18 @@ async function newChat() {
   // 当前 composer 有未保存内容时，避免静默丢弃
   if (currentId && composerDirty()
       && !window.confirm("当前对话的「职位名称 / 岗位要求」有未保存修改，新建对话将丢弃。是否继续？")) return;
+  // 新对话从「空」开始：立刻同步清空 composer（含基准值）。
+  // 这样在随后的 creatingChat 窗口内，「DOM 非空」即可准确表示「用户已开始输入」，
+  // 避免 openChat 回填时把上一个对话的残留内容误判为用户输入，
+  // 也让慢网络下用户刚打的字不被新对话的空值覆盖。
+  $("#ws-title-input").value = "";
+  $("#ws-input").value = "";
+  savedTitle = "";
+  savedReq = "";
+  updateComposerState();
+  // 标记「新建流程进行中」：createChat 的网络往返期间 UI 可交互，用户可能立刻打字；
+  // openChat 会据此避免用新对话的空值覆盖用户输入。务必在 finally 里复位。
+  creatingChat = true;
   try {
     const c = await api.createChat({});
     chats.set(c.id, c);
@@ -427,6 +456,8 @@ async function newChat() {
     toast("已新建对话，填写「职位名称」与「岗位要求」后点「生成简历」", "ok");
   } catch (err) {
     toast(`新建对话失败：${err.message}`, "err");
+  } finally {
+    creatingChat = false;
   }
 }
 
@@ -693,6 +724,83 @@ async function resetProfile() {
     toast("已恢复为「资料」页里的默认资料", "ok");
   } catch (err) {
     toast(`重置失败：${err.message}`, "err");
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// 工作区粘贴简历原文 -> 解析并写进本对话资料快照（只增补，不覆盖）
+// --------------------------------------------------------------------------- //
+// 简历常见章节词：命中其一 + 文本足够长，才判定「像一份简历」
+const RESUME_SECTION_RE = new RegExp(
+  ["工作经历", "工作经验", "项目经历", "项目经验", "教育背景", "教育经历",
+   "专业技能", "技能清单", "实习经历", "个人简介", "自我评价", "求职意向",
+   "work experience", "experience", "education", "projects?", "skills?"].join("|"), "i");
+
+// 启发式：长度 > 300 且含简历章节词之一
+function looksLikeResume(text) {
+  const t = String(text || "").trim();
+  if (t.length <= 300) return false;
+  return RESUME_SECTION_RE.test(t);
+}
+
+// 全局 paste：只在「工作区视图已激活 + 已打开对话」且粘贴目标是**非可编辑区域**
+// 时生效。贴到任意输入框 / 文本域 / 可编辑元素里，都视为「用户要填那个字段」，
+// 一律走默认粘贴（职位名 / 岗位要求框的既有行为因此完全不受影响）。
+function onWorkspacePaste(ev) {
+  const target = ev.target;
+  const tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+  if (target && (target.isContentEditable || ["input", "textarea", "select"].includes(tag))) return;
+  const wsView = document.querySelector('.view[data-view="workspace"]');
+  if (!wsView || !wsView.classList.contains("is-active")) return;   // 不在工作区
+  const work = $("#ws-work");
+  if (!work || work.hidden || !currentId) return;           // 未打开对话
+  const text = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
+  if (!looksLikeResume(text)) return;                       // 不是简历 -> 保持默认粘贴
+  ev.preventDefault();
+  pendingResumeText = text;
+  openResumePasteDialog();
+}
+
+function openResumePasteDialog() {
+  const status = $("#rp-status");
+  status.className = "test-result";
+  status.textContent = "";
+  const btn = $("#btn-resume-paste-confirm");
+  btn.disabled = false;
+  btn.textContent = "解析并写入";
+  const dlg = $("#resume-paste-dialog");
+  if (!dlg.open) dlg.showModal();
+}
+
+async function confirmResumePaste() {
+  if (!currentId || !pendingResumeText) return;
+  const btn = $("#btn-resume-paste-confirm");
+  const status = $("#rp-status");
+  const before = (currentChat && currentChat.profile_snapshot) || {};
+  btn.disabled = true;
+  btn.textContent = "解析中…";
+  status.className = "test-result is-pending";
+  status.textContent = "正在解析简历文本并写入本对话资料…";
+  try {
+    const c = await api.importChatProfileText(currentId, pendingResumeText);
+    currentChat = { ...currentChat, ...c };
+    chats.set(currentId, { ...(chats.get(currentId) || {}), ...c });
+    renderHead();
+    renderList();
+    renderProfileBar(c);
+    $("#resume-paste-dialog").close();
+    pendingResumeText = "";
+    const after = c.profile_snapshot || {};
+    const nExp = Math.max(0, (after.experiences || []).length - (before.experiences || []).length);
+    const nSkill = Math.max(0, (after.skills || []).length - (before.skills || []).length);
+    toast(`已解析并写入本对话资料：${nExp} 段经历 / ${nSkill} 项技能`, "ok", 5000);
+  } catch (err) {
+    status.className = "test-result is-err";
+    status.textContent = err.status === 409
+      ? "对话正在生成中，请稍后再导入资料"
+      : `解析失败：${err.message}`;
+    btn.disabled = false;
+    btn.textContent = "解析并写入";
   }
 }
 

@@ -137,7 +137,7 @@ backend/app/
 
 ```
 static/
-├── index.html           三视图外壳 + 5 个 dialog + 内联防闪烁脚本 + ?v=N 版本号
+├── index.html           三视图外壳 + 6 个 dialog + 内联防闪烁脚本 + ?v=N 版本号
 ├── css/app.css          Ark UI token（:root / :root[data-theme="light"]）+ 全部样式
 └── js/
     ├── app.js           入口：视图路由、设置弹窗、命令面板、快捷键、主题

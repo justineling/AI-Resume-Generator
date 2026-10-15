@@ -304,6 +304,7 @@ let cmdAll = [];        // 已登记的全部命令
 let cmdItems = [];      // 当前过滤后展示的命令
 let cmdIndex = 0;       // 高亮项
 let cmdReturnFocus = null;
+let cmdUrlMode = "";    // 非空 = 「粘贴 URL 回车即抓取」模式，值为待导入的链接
 
 function clickEl(sel) { const n = $(sel); if (n) n.click(); }
 
@@ -355,8 +356,80 @@ function fuzzyMatch(text, query) {
   return true;
 }
 
+// 判断剪贴板文本是否像一个招聘页面链接（http(s):// 或裸域名，且不含空白）
+function looksLikeUrl(text) {
+  const t = String(text || "").trim();
+  if (!t || /\s/.test(t)) return false;
+  if (/^https?:\/\//i.test(t)) return true;
+  return /^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(t);
+}
+
+// 进入「URL 模式」：显示提示、只保留「导入该链接」一条命令
+function enterUrlMode(url) {
+  cmdUrlMode = url;
+  const input = $("#cmd-input");
+  if (input) input.value = url;
+  const hint = $("#cmd-url-hint");
+  const value = $("#cmd-url-value");
+  if (value) value.textContent = url;
+  if (hint) hint.hidden = false;
+  cmdIndex = 0;
+  renderCommands("");
+}
+
+// 退出「URL 模式」：回到普通模糊搜索（第一次 Esc 用）
+function exitUrlMode() {
+  cmdUrlMode = "";
+  const hint = $("#cmd-url-hint");
+  if (hint) hint.hidden = true;
+  const input = $("#cmd-input");
+  if (input) input.value = "";
+  cmdIndex = 0;
+  renderCommands("");
+}
+
+// 执行导入：复用既有「从链接导入」流程（打开导入框 → 填入 URL → 触发导入），
+// 不另写一套抓取逻辑。
+function performUrlImport(url) {
+  switchView("workspace");
+  const openBtn = $("#btn-import-url");
+  if (openBtn) openBtn.click();
+  const input = $("#import-url-input");
+  if (input) input.value = url;
+  const confirmBtn = $("#btn-import-confirm");
+  if (confirmBtn) confirmBtn.click();
+}
+
+function runUrlImport(url) {
+  closePalette();
+  setTimeout(() => { try { performUrlImport(url); } catch (err) { toast(`导入失败：${err.message}`, "err"); } }, 0);
+}
+
 function renderCommands(query) {
   const host = $("#cmd-list");
+  // URL 模式：只展示「导入该链接」一条
+  if (cmdUrlMode) {
+    cmdItems = [{
+      group: "招聘链接", title: "导入该链接", hint: cmdUrlMode,
+      run: () => performUrlImport(cmdUrlMode),
+    }];
+    cmdIndex = 0;
+    host.innerHTML = "";
+    $("#cmd-empty").hidden = true;
+    host.appendChild(el("div", { class: "cmd-group", role: "presentation", text: cmdItems[0].group }));
+    const only = el("button", {
+      class: "cmd-item", type: "button", id: "cmd-opt-0",
+      role: "option", "aria-selected": "true",
+    }, [
+      el("span", { class: "cmd-item-title", text: cmdItems[0].title }),
+      el("span", { class: "cmd-item-hint", text: cmdItems[0].hint }),
+    ]);
+    only.addEventListener("click", () => runCmd(0));
+    host.appendChild(only);
+    syncActiveDescendant();
+    return;
+  }
+
   const q = (query || "").trim();
   cmdItems = q ? cmdAll.filter((c) => fuzzyMatch(c.title, q)) : cmdAll.slice();
   if (cmdIndex >= cmdItems.length) cmdIndex = 0;
@@ -427,6 +500,9 @@ function openPalette() {
   const dlg = $("#command-palette");
   if (dlg.open) return;
   cmdReturnFocus = document.activeElement;
+  cmdUrlMode = "";
+  const hint = $("#cmd-url-hint");
+  if (hint) hint.hidden = true;
   const input = $("#cmd-input");
   input.value = "";
   cmdIndex = 0;
@@ -445,20 +521,43 @@ function initPalette() {
   const input = $("#cmd-input");
 
   input.addEventListener("input", () => {
+    if (cmdUrlMode) return;   // URL 模式下不随输入变化
     cmdIndex = 0;
     renderCommands(input.value);
+  });
+  // 粘贴 URL -> 自动进入「回车即抓取」模式（不触发普通模糊搜索）
+  input.addEventListener("paste", (ev) => {
+    const text = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
+    if (looksLikeUrl(text)) {
+      ev.preventDefault();
+      enterUrlMode(text.trim());
+    }
   });
   // ↑↓ Enter 仅面板内消费，不冒泡成全局快捷键
   input.addEventListener("keydown", (ev) => {
     if (ev.isComposing) return;
     if (ev.key === "ArrowDown") { ev.preventDefault(); ev.stopPropagation(); setCmdIndex(cmdIndex + 1); }
     else if (ev.key === "ArrowUp") { ev.preventDefault(); ev.stopPropagation(); setCmdIndex(cmdIndex - 1); }
-    else if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); runCmd(cmdIndex); }
+    else if (ev.key === "Enter") {
+      ev.preventDefault(); ev.stopPropagation();
+      if (cmdUrlMode) runUrlImport(cmdUrlMode);
+      else runCmd(cmdIndex);
+    }
+  });
+  // Esc：第一次退出 URL 模式（不关面板），第二次才关闭面板
+  dlg.addEventListener("cancel", (ev) => {
+    if (cmdUrlMode) {
+      ev.preventDefault();
+      exitUrlMode();
+    }
   });
   // 关闭（Esc / 执行后）时把焦点还原到触发前的元素
   dlg.addEventListener("close", () => {
     cmdItems = [];
     cmdIndex = 0;
+    cmdUrlMode = "";
+    const hint = $("#cmd-url-hint");
+    if (hint) hint.hidden = true;
     const back = cmdReturnFocus;
     cmdReturnFocus = null;
     if (back && typeof back.focus === "function" && document.contains(back)) back.focus();

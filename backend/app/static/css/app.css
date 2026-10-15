@@ -31,6 +31,10 @@
   --signal-tint: rgba(24, 209, 255, 0.06);
   --signal-tint-strong: rgba(24, 209, 255, 0.14);
   --on-signal: #04181f;                          /* 信号色背景之上的文字色 */
+  --signal-hover: #4fdcff;                       /* 主按钮 hover 底色（亮青） */
+  --on-signal-dim: rgba(4, 24, 31, 0.6);         /* 主按钮 disabled 文字色 */
+  --paper: #ffffff;                              /* 简历预览「纸张」底：与主题无关，始终为白 */
+  --muted-soft: rgba(123, 133, 137, 0.7);        /* 占位符 / 弱化文字：--muted 的柔和版 */
 
   /* 字体 */
   --font-ui: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", -apple-system, "Segoe UI", sans-serif;
@@ -81,6 +85,12 @@
   --signal-tint: rgba(10, 114, 145, 0.10);
   --signal-tint-strong: rgba(10, 114, 145, 0.16);
   --on-signal: #ffffff;
+  /* hover 底色比 --signal(#0a7291) 更深，保证白字对比度 ~7:1；
+     disabled 文字色用半透明白（白底信号色之上） */
+  --signal-hover: #075a75;
+  --on-signal-dim: rgba(255, 255, 255, 0.6);
+  --paper: #ffffff;                              /* 纸张底与主题无关，浅色下仍为白 */
+  --muted-soft: rgba(93, 104, 109, 0.8);         /* 浅色底上需更实，否则占位符发灰看不清 */
   --state-tint: rgba(95, 125, 0, 0.08);
   --state-glow: rgba(95, 125, 0, 0.35);
   --danger-tint: rgba(198, 40, 40, 0.07);
@@ -254,7 +264,7 @@ html, body { overflow-x: hidden; }
 .rail-label { font-size: 12.5px; }
 .rail-badge {
   position: absolute; top: 8px; right: 14px;
-  background: var(--signal); color: #04181f;
+  background: var(--signal); color: var(--on-signal);
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
   min-width: 16px; height: 16px; line-height: 16px; text-align: center;
   padding: 0 3px;
@@ -266,7 +276,7 @@ html, body { overflow-x: hidden; }
   font-family: var(--font-mono);
   font-size: 9.5px;
   letter-spacing: 0.14em;
-  color: rgba(123, 133, 137, 0.55);
+  color: var(--muted-soft);
   border-top: 1px solid var(--rule);
   line-height: 1.5;
 }
@@ -453,7 +463,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 1px;
 }
-input::placeholder, textarea::placeholder { color: rgba(123, 133, 137, 0.7); }
+input::placeholder, textarea::placeholder { color: var(--muted-soft); }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 14px) 14px, calc(100% - 9px) 14px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 28px; }
 
 .field-inline {
@@ -467,7 +477,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  background: #06090a;
+  background: var(--ink);
   border-color: var(--rule);
 }
 .code-area-tall { min-height: 420px; }
@@ -537,10 +547,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 .btn-primary::before {
   content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px;
-  background: #04181f;
+  background: var(--on-signal);
 }
-.btn-primary:hover:not(:disabled) { background: #4fdcff; border-color: #4fdcff; }
-.btn-primary:disabled { background: var(--signal-dim); border-color: var(--signal-dim); color: rgba(4,24,31,0.6); }
+.btn-primary:hover:not(:disabled) { background: var(--signal-hover); border-color: var(--signal-hover); }
+.btn-primary:disabled { background: var(--signal-dim); border-color: var(--signal-dim); color: var(--on-signal-dim); }
 .btn-ghost { color: var(--fg-dim); }
 .btn-ghost:hover { color: var(--fg); }
 .btn-add {
@@ -635,7 +645,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .edit-state.is-dirty { color: var(--warn); }
 .editor-frame {
   width: 100%; flex: 1 1 auto; min-height: 62vh;
-  border: 1px solid var(--rule-strong); background: #fff;
+  border: 1px solid var(--rule-strong); background: var(--paper);
 }
 .editor-frame.is-locked { pointer-events: none; }
 
@@ -1100,6 +1110,24 @@ input[readonly]:focus { border-color: var(--rule-strong); background: var(--surf
   font-size: 10px; letter-spacing: 0.04em; color: var(--muted);
 }
 .cmd-empty { padding: 18px 16px; margin: 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+/* 粘贴 URL 后的「回车即抓取」提示条 */
+.cmd-url-hint {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--rule);
+  background: var(--signal-tint);
+}
+.cmd-url-label {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--signal); white-space: nowrap;
+}
+.cmd-url-label::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px;
+  background: var(--signal); border-radius: var(--radius);
+}
+.cmd-url-value {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-dim);
+  word-break: break-all; min-width: 0;
+}
 @media (max-width: 760px) {
   .dialog-cmd { width: min(560px, 94vw); }
   .cmd-list { max-height: 56vh; }
