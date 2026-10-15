@@ -128,4 +128,4 @@
 3. **「测试连接」用已存储 Key 只在同供应商时生效**：切到别的供应商后不填 Key 直接测试，会提示「请先填写 API Key」，这是防止误判的设计。
 4. **`custom` 必须显式提供 Base URL**：预设里 `custom` 的 `base_url` 为空，不填就测试/保存会报「请填写 Base URL」。
 5. **预设模型名可能过时**：非 DeepSeek 的候选名只是示例，点「测试连接」拉真实列表再选，或用「自定义模型名」。
-6. **`.env.example` 里的 DeepSeek 示例已过时**：它写的是 `https://api.deepseek.com/v1` + `deepseek-chat`，而当前预设是 `https://api.deepseek.com` + `deepseek-flash` / `deepseek-v4-pro`。以**设置界面/`providers.py` 的预设为准**，或直接用「测试连接」探测。
+6. **以预设为准，不要照抄 `.env.example`**：`.env.example` 的 DeepSeek 示例已与预设对齐（`https://api.deepseek.com` + `deepseek-flash`），但它只是**示例注释**，默认值是 OpenAI。真正生效的是「设置界面 / `providers.py` 预设 / 数据库里的运行时配置」（优先级见上文），或直接用「测试连接」探测真实可用模型。

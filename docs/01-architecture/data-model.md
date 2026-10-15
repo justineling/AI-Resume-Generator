@@ -13,7 +13,7 @@
 erDiagram
     Profile ||..o{ Chat : "新建时整体深拷贝 -> profile_snapshot"
     Chat ||--o{ ChatMessage : "chat_id 级联"
-    Chat ||--o| Resume : "chat_id（一 chat 至多一份）"
+    Chat ||--o{ Resume : "chat_id（DB 层一对多，由 pipeline 保证至多一份）"
     Resume ||--o{ EditLog : "resume_id 级联"
 
     Profile {
@@ -52,6 +52,12 @@ erDiagram
         bool ok
     }
 ```
+
+> **关于 `Chat ↔ Resume` 的基数（易误读）**
+> **产品语义**是「一个 chat = 一份简历」，但 **DB 层是一对多**：`Resume.chat_id` 只是普通外键，没有唯一约束。
+> 「至多一份」是由 `pipeline.run_chat()` 在生成时**删旧建新**维持的（`pipeline.py` 里先查 `existing` 再清理）。
+> 因此代码里凡是按 chat 取简历的地方都做了**防御式读取**（如 `order_by(id.desc()).first()` 取最新一份），
+> 删除时也是遍历删除。新增按 chat 查简历的功能时，请沿用这两种写法，不要假设只有一条。
 
 > `AppSetting` 与其它表无外键关系，是独立的 key-value 配置表，未画入 ER 图。
 
@@ -209,7 +215,10 @@ erDiagram
 ### 4.2 `profile_dirty` 的含义
 
 - `False`：快照与全局资料一致（新建时的样子，或刚 reset 过）。
-- `True`：快照被本 chat 修改过（`PUT /api/chats/{id}/profile`，或 `interview/submit` 合并了补充回答）。
+- `True`：快照被本 chat 修改过。目前有 **3 个写入点**（均在 `routers/chats.py`）：
+  1. `PUT /api/chats/{id}/profile` —— 手动编辑快照；
+  2. `POST /api/chats/{id}/interview/submit` —— AI 问答的回答被合并进快照；
+  3. `POST /api/chats/{id}/profile/import-text` —— 在工作区粘贴简历原文、解析后增补进快照。
 
 前端 `chat.js::renderProfileBar` 据此显示「已单独调整」徽标（`#ws-profile-badge`）。
 

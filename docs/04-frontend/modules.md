@@ -164,9 +164,11 @@ sequenceDiagram
 `index.html` 中：
 
 ```html
-<link rel="stylesheet" href="/static/css/app.css?v=10" />
-<script type="module" src="/static/js/app.js?v=10"></script>
+<link rel="stylesheet" href="/static/css/app.css?v=11" />
+<script type="module" src="/static/js/app.js?v=11"></script>
 ```
+
+> 上面是**写文档时的当前值（v=11）**。这个数字每次改前端资源都要提升，因此以 `index.html` 里的实际值为准 —— 不要照抄本文的示例数字。
 
 - **作用**：浏览器对 `/static/...` 有强缓存；改前端后若不提升 `?v=N`，用户会继续用旧文件。
 - **规则**：**改前端后必须提升版本号**（当前为 `v=10`）。改 CSS 也要升（因为 CSS 也带 `?v`）。
