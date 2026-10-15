@@ -155,10 +155,15 @@ AI Resume Generator/
 ├── start.sh                       # macOS / Linux 启动
 ├── requirements.txt
 ├── .env.example
-├── docs/                          # 设计文档
-│   ├── system_design.md           # 系统设计（含类图 / 时序图）
-│   ├── class-diagram.mermaid
-│   └── sequence-diagram.mermaid
+├── docs/                          # 开发者文档（入口：docs/README.md）
+│   ├── README.md                  # 文档总索引（从这开始读）
+│   ├── 01-architecture/           # 架构总览 / 数据模型 / 生成管线 / 调度器 / 安全
+│   ├── 02-features/               # 各功能说明（资料库 / 工作区 / AI 问答 / URL 导入 / 简历工作台 / 命令面板）
+│   ├── 03-api/                    # API 参考
+│   ├── 04-frontend/               # 前端模块划分 / 设计系统
+│   ├── 05-testing/                # 测试体系 / 隔离机制
+│   ├── 06-operations/             # 启动配置 / LLM 供应商
+│   └── 99-history/                # 归档的历史设计稿
 ├── data/                          # SQLite 数据库（运行时生成）
 └── backend/
     ├── run.py                     # 开发入口

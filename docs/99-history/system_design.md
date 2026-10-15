@@ -1,5 +1,9 @@
 # 增量重构设计：岗位批量生成 → 聊天式工作区
 
+> **归档说明**：本文是「聊天式工作区重构」的**历史设计稿**，描述的是当时的重构方案，部分内容已被后续实现超越。
+> 当前系统请以 [`../README.md`](../README.md) 索引的文档为准。
+
+
 > 目标：把「粘贴一大段 → 批量建 N 个任务 → N 份简历」的模型，改为「一个 chat = 一份简历」的聊天式工作区。
 > 本文件为**增量设计**（基于现有 `backend/app` 实现），不含实现代码。
 
@@ -66,7 +70,7 @@
 **`Resume`**：`task_id` → **`chat_id`(FK,index)**；新增 `coverage(JSON)`；其余不变。
 **`EditLog`**：不变（仍挂 `resume_id`）。
 
-类图见 `docs/class-diagram.mermaid`。
+类图见同目录 `class-diagram.mermaid`。
 
 ### 2.3 迁移策略（明确建议）
 
@@ -103,7 +107,7 @@
 
 复用现有 WebSocket（`/ws/tasks`，路径名保留以免前端大改），事件改名 `chat_message`/`chat_progress`/`chat_updated`，payload 带 `chat_id`。
 
-时序图见 `docs/sequence-diagram.mermaid`。要点：
+时序图见同目录 `sequence-diagram.mermaid`。要点：
 1. 用户在 chat 内贴 JD → `POST /messages` → 落 `ChatMessage(jd)` + 写 `Chat.raw_text` → 广播 `chat_message`。
 2. 点「生成」→ `POST /generate` → 校验（有 JD、未运行）→ `scheduler.enqueue(chat_id)`。
 3. worker 抢占（条件 UPDATE）→ `run_chat`：载入 `profile_snapshot` → 解析岗位（含分节 + employer_questions 剔除）→ 生成 spec + coverage → 渲染 HTML → 落 Resume（含 coverage）→ `Chat.status=succeeded`。

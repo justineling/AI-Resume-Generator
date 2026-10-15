@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>AI Resume Generator — 系统总览</title>
+<style>
+  :root{
+    --ink:#080a0b; --surface:#0c1012; --surface-2:#11171a;
+    --fg:#e9eef0; --fg-dim:#b3bcc0; --muted:#7b8589;
+    --signal:#18d1ff; --signal-dim:#0f7f9c; --state:#c8eb21;
+    --danger:#ff5a5a; --warn:#ffb454;
+    --rule:rgba(233,238,240,.10); --rule-strong:rgba(233,238,240,.24);
+    --tint-soft:rgba(255,255,255,.03); --tint-hover:rgba(255,255,255,.06);
+    --grid-line:rgba(255,255,255,.022);
+    --signal-tint:rgba(24,209,255,.06); --signal-tint-strong:rgba(24,209,255,.14);
+    --on-signal:#04181f;
+    --font-ui:"Noto Sans SC","Source Han Sans SC","PingFang SC",-apple-system,"Segoe UI",sans-serif;
+    --font-display:"Arial Narrow","Roboto Condensed","DIN Condensed",sans-serif;
+    --font-mono:"IBM Plex Mono","SFMono-Regular",Consolas,"Courier New",monospace;
+    --radius:0px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--ink); color:var(--fg);
+    font-family:var(--font-ui); font-size:14px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size:46px 46px;
+  }
+  .wrap{position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:0 24px 80px;}
+
+  /* ---------- topbar ---------- */
+  header.top{
+    border-bottom:1px solid var(--rule);
+    background:linear-gradient(180deg,var(--signal-tint),transparent 70%),var(--surface);
+    padding:18px 0; margin-bottom:0;
+  }
+  header.top .inner{max-width:1080px; margin:0 auto; padding:0 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
+  .mark{display:flex; gap:3px; align-items:flex-end; height:22px;}
+  .mark i{width:4px; background:var(--signal); display:block;}
+  .mark i:nth-child(1){height:11px; opacity:.55;}
+  .mark i:nth-child(2){height:22px;}
+  .mark i:nth-child(3){height:16px; opacity:.75;}
+  .wordmark{display:flex; flex-direction:column; line-height:1.05;}
+  .wordmark strong{font-family:var(--font-display); font-size:19px; letter-spacing:.09em; font-weight:800;}
+  .wordmark small{font-family:var(--font-mono); font-size:9.5px; letter-spacing:.18em; color:var(--muted);}
+  .top-status{margin-left:auto; font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; color:var(--signal);
+    border:1px solid var(--rule-strong); padding:4px 10px; display:flex; align-items:center; gap:8px;}
+  .pulse{width:7px; height:7px; background:var(--signal); border-radius:50%; box-shadow:0 0 0 0 var(--signal-tint-strong);}
+
+  /* ---------- layout ---------- */
+  .layout{display:grid; grid-template-columns:200px 1fr; gap:40px; margin-top:32px;}
+  nav.toc{position:sticky; top:20px; align-self:start; font-family:var(--font-mono); font-size:12px;}
+  nav.toc h4{font-family:var(--font-display); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 12px;}
+  nav.toc a{display:block; color:var(--fg-dim); text-decoration:none; padding:5px 0; border-left:2px solid transparent; padding-left:10px; letter-spacing:.02em;}
+  nav.toc a:hover{color:var(--signal); border-left-color:var(--signal);}
+  main{min-width:0;}
+
+  h1{font-family:var(--font-display); font-size:34px; letter-spacing:-.01em; margin:0 0 8px; font-weight:800;}
+  h2{font-family:var(--font-display); font-size:15px; letter-spacing:.1em; text-transform:uppercase; font-weight:800;
+    margin:44px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--rule); display:flex; gap:10px; align-items:baseline;}
+  h2 .idx{font-family:var(--font-mono); font-size:11px; color:var(--signal); letter-spacing:.08em;}
+  h3{font-size:13.5px; letter-spacing:.02em; margin:20px 0 8px; font-weight:700;}
+  p{color:var(--fg-dim); margin:10px 0;}
+  .lede{color:var(--fg); font-size:15px; border-left:2px solid var(--signal); padding-left:14px;}
+  code{font-family:var(--font-mono); font-size:12.5px; background:var(--tint-soft); border:1px solid var(--rule); padding:1px 5px; color:var(--fg);}
+
+  /* ---------- table ---------- */
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:13px;}
+  th,td{border:1px solid var(--rule); padding:8px 10px; text-align:left; vertical-align:top;}
+  th{background:var(--signal-tint); font-family:var(--font-display); letter-spacing:.08em; text-transform:uppercase; font-size:10.5px; color:var(--signal);}
+  td{color:var(--fg-dim);}
+  td strong{color:var(--fg);}
+  tr:hover td{background:var(--tint-soft);}
+
+  /* ---------- component diagram (pure CSS) ---------- */
+  .diagram{border:1px solid var(--rule); background:var(--surface); padding:22px; margin:16px 0;}
+  .row{display:flex; align-items:stretch; gap:14px; flex-wrap:wrap; justify-content:center;}
+  .node{
+    border:1px solid var(--rule-strong); background:var(--surface-2); padding:12px 14px; flex:1 1 0; min-width:150px;
+    font-family:var(--font-mono); font-size:11.5px; color:var(--fg); position:relative;
+  }
+  .node .n-code{display:block; font-size:9.5px; letter-spacing:.14em; color:var(--signal); text-transform:uppercase; margin-bottom:5px;}
+  .node .n-sub{display:block; color:var(--muted); font-size:10.5px; margin-top:5px; line-height:1.5;}
+  .node.accent{border-color:var(--signal); background:linear-gradient(180deg,var(--signal-tint),transparent);}
+  .node.db{border-style:dashed;}
+  .arrow{display:flex; align-items:center; justify-content:center; color:var(--signal); font-family:var(--font-mono); font-size:14px; padding:4px 0;}
+  .vsep{text-align:center; color:var(--muted); font-family:var(--font-mono); font-size:11px; padding:3px 0; letter-spacing:.08em;}
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1 1 100%;}
+  .badge{display:inline-block; font-family:var(--font-mono); font-size:10px; padding:1px 7px; border:1px solid var(--rule-strong);
+    color:var(--fg-dim); letter-spacing:.06em;}
+  .badge.sig{color:var(--signal); border-color:var(--signal); background:var(--signal-tint);}
+
+  /* ---------- pipeline stages ---------- */
+  .stages{display:flex; gap:0; flex-wrap:wrap; margin:16px 0; border:1px solid var(--rule);}
+  .stage{flex:1 1 110px; padding:12px 12px; border-right:1px solid var(--rule); min-width:110px;}
+  .stage:last-child{border-right:0;}
+  .stage .pct{font-family:var(--font-mono); font-size:18px; color:var(--signal); font-weight:700;}
+  .stage .nm{font-size:11.5px; color:var(--fg); margin-top:2px;}
+  .stage .sub{font-family:var(--font-mono); font-size:9.5px; color:var(--muted); margin-top:6px; letter-spacing:.04em;}
+
+  /* ---------- decisions ---------- */
+  .dec{border:1px solid var(--rule); border-left:2px solid var(--signal); background:var(--surface); padding:12px 16px; margin:10px 0;}
+  .dec .dh{font-family:var(--font-mono); font-size:11px; color:var(--signal); letter-spacing:.06em; margin-bottom:6px;}
+  .dec p{margin:5px 0; font-size:12.5px;}
+  .dec .k{color:var(--fg); font-weight:600;}
+
+  .traps li{color:var(--fg-dim); font-size:13px; margin:6px 0;}
+  .traps li strong{color:var(--warn);}
+  footer{margin-top:56px; padding-top:16px; border-top:1px solid var(--rule); font-family:var(--font-mono);
+    font-size:10.5px; color:var(--muted); letter-spacing:.06em; display:flex; gap:14px; flex-wrap:wrap;}
+  a.ln{color:var(--signal); text-decoration:none;}
+  a.ln:hover{text-decoration:underline;}
+  @media (max-width:820px){
+    .layout{grid-template-columns:1fr; gap:20px;}
+    nav.toc{position:static; border:1px solid var(--rule); padding:14px;}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="wordmark">
+      <strong>AI RESUME</strong>
+      <small>GENERATOR / ARCHITECTURE OVERVIEW</small>
+    </span>
+    <span class="top-status"><span class="pulse"></span>LOCAL-FIRST · FASTAPI + SQLITE(WAL)</span>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+  <nav class="toc">
+    <h4>CONTENTS</h4>
+    <a href="#pos">01 / 定位</a>
+    <a href="#stack">02 / 技术选型</a>
+    <a href="#comp">03 / 组件图</a>
+    <a href="#flow">04 / 数据流</a>
+    <a href="#pipe">05 / 生成管线</a>
+    <a href="#tree">06 / 目录职责</a>
+    <a href="#dec">07 / 关键决策</a>
+    <a href="#traps">08 / 常见陷阱</a>
+  </nav>
+
+  <main>
+    <h1>系统总览</h1>
+    <p class="lede">本地优先、聊天式的求职简历工作台：把 JD 粘进一个对话，系统解析岗位、基于你的固定资料生成一份针对性简历，并给出「哪条要求有据可依、哪条只能按能力表述」的覆盖清单。</p>
+
+    <h2 id="pos"><span class="idx">01</span>一句话定位</h2>
+    <p>
+      <span class="badge sig">一个 chat = 一个求职场景 = 恰好一份简历</span>
+    </p>
+    <table>
+      <thead><tr><th>层</th><th>选型</th></tr></thead>
+      <tbody>
+        <tr><td><strong>后端</strong></td><td>FastAPI + SQLModel + SQLite(WAL) + asyncio 调度器</td></tr>
+        <tr><td><strong>前端</strong></td><td>原生 ES Module（无构建工具），三视图 01 资料 / 02 工作区 / 03 简历</td></tr>
+        <tr><td><strong>运行</strong></td><td>本机单进程，数据不出本机；无 API Key 自动进入 mock 降级模式，开箱即跑</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="stack"><span class="idx">02</span>技术选型</h2>
+    <table>
+      <thead><tr><th>层</th><th>选型</th><th>选它的理由</th></tr></thead>
+      <tbody>
+        <tr><td>Web 框架</td><td><strong>FastAPI</strong></td><td>原生 async（与调度器同栈）、Pydantic 校验、<code>Depends(get_session)</code> 注入简化事务</td></tr>
+        <tr><td>ORM / 数据</td><td><strong>SQLModel</strong></td><td>Pydantic 模型 + SQLAlchemy 表二合一；JSON 列直接映射 dict/list</td></tr>
+        <tr><td>数据库</td><td><strong>SQLite + WAL</strong></td><td>零外部依赖、单文件、本地优先；WAL + check_same_thread=False 让请求线程与后台 worker 共享</td></tr>
+        <tr><td>并发调度</td><td><strong>asyncio.Queue + 条件 UPDATE 抢占</strong></td><td>免 Celery/Redis；队列只是触发器，<strong>DB 里的 status 才是真相来源</strong> → 可重启恢复</td></tr>
+        <tr><td>LLM 接入</td><td><strong>httpx + OpenAI 兼容</strong></td><td>一套客户端指向 DeepSeek / OpenAI / Moonshot / 通义 / 智谱 / Ollama 等</td></tr>
+        <tr><td>模板渲染</td><td><strong>Jinja2 autoescape</strong></td><td>模型只产出 spec JSON，HTML 由确定性渲染器产出 → XSS 防线 + 样式一致</td></tr>
+        <tr><td>HTML 净化</td><td><strong>nh3（ammonia）</strong></td><td>白名单净化，堵死手写正则堵不完的变体（<code>&lt;img/onerror&gt;</code>、实体编码协议…）</td></tr>
+        <tr><td>前端</td><td><strong>原生 ES Module</strong></td><td>无构建工具、无依赖树、双击即跑；~2.5k 行可控</td></tr>
+        <tr><td>配色</td><td><strong>Ark UI / moderate</strong></td><td>近黑底 + 青色信号 + 方角 + 1px 细线 + 等宽字体承载技术信息</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="comp"><span class="idx">03</span>组件图</h2>
+    <div class="diagram">
+      <div class="row">
+        <div class="node accent" style="flex:1 1 100%;">
+          <span class="n-code">Browser</span>浏览器 · 原生 ES Module
+          <span class="n-sub">index.html + app.js / chat.js / resume.js / profile.js / interview.js / api.js / ui.js</span>
+        </div>
+      </div>
+      <div class="arrow">▼ &nbsp; fetch /api/* &nbsp; · &nbsp; ▲ WebSocket /ws/tasks</div>
+      <div class="row">
+        <div class="node" style="flex:1 1 100%;">
+          <span class="n-code">FastAPI (main.py)</span>REST 路由 + 静态资源 + WebSocket 端点
+          <span class="n-sub">routers: profile · chats · resumes · ai_edit · settings · tasks(deprecated)</span>
+        </div>
+      </div>
+      <div class="arrow">▼ &nbsp; events.hub.broadcast &nbsp; · &nbsp; ▲ enqueue / cancel</div>
+      <div class="row">
+        <div class="node accent">
+          <span class="n-code">EventHub (events.py)</span>
+          chat_message · chat_progress · chat_updated
+          <span class="n-sub">WebSocket 广播，路径仍为 /ws/tasks</span>
+        </div>
+        <div class="node accent">
+          <span class="n-code">TaskScheduler (scheduler.py)</span>
+          asyncio.Queue + N workers
+          <span class="n-sub">条件 UPDATE 抢占 · 指数退避重试 · 重启恢复 _recover()</span>
+        </div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="row">
+        <div class="node" style="flex:1 1 62%;">
+          <span class="n-code">pipeline.run_chat</span>生成管线 10% → 25% → 60% → 85% → 100%
+          <span class="n-sub">_emit 写 progress + stage 并广播 chat_progress</span>
+        </div>
+        <div class="split">
+          <div class="node">
+            <span class="n-code">llm.py</span>LLMClient
+            <span class="n-sub">OpenAI 兼容 /chat/completions；有 Key 走它</span>
+          </div>
+          <div class="node">
+            <span class="n-code">mock.py</span>降级
+            <span class="n-sub">无 Key 的启发式实现</span>
+          </div>
+        </div>
+      </div>
+      <div class="arrow">▼ &nbsp; renderer.render_resume_html &nbsp; ▼ &nbsp; 落库</div>
+      <div class="row">
+        <div class="node db" style="flex:1 1 100%;">
+          <span class="n-code">SQLite (WAL)</span>
+          chat · chatmessage · resume · editlog · profile · appsetting
+          <span class="n-sub">DB 是调度与状态的真相来源；进程内 Queue 仅作触发器</span>
+        </div>
+      </div>
+      <div class="vsep">pipeline 同时通过 LLMClient 访问外部供应商：DeepSeek / OpenAI / Ollama …（httpx，本机地址绕过代理）</div>
+    </div>
+
+    <h2 id="flow"><span class="idx">04</span>端到端数据流</h2>
+    <p>从「粘贴 JD」到「产出简历」的主链路（对应 <a class="ln" href="../01-architecture/overview.md">overview.md</a> 的时序图）：</p>
+    <div class="diagram">
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">1 · 新建对话</span>POST /api/chats → 对全局 Profile 做<b>整体快照</b>（profile_snapshot，profile_dirty=false）</div>
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">2 · 贴 JD</span>POST /api/chats/{id}/messages {kind:"jd"} → 同步写 Chat.raw_text，广播 chat_message</div>
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">3 · 生成前问答</span>POST /api/chats/{id}/interview → 找「岗位需要但资料缺依据」的缺口，返回 questions[]</div>
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">4 · 提交回答</span>POST /api/chats/{id}/interview/submit {auto_generate:true} → 增量合并进快照（profile_dirty=true）→ enqueue</div>
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">5 · 抢占</span>scheduler：UPDATE chat SET status='running' WHERE id=? AND status='queued'（原子抢占）</div>
+      <div class="node" style="margin-bottom:10px;"><span class="n-code">6 · 生成</span>run_chat：10% 载入快照 → 25% 解析岗位 → 60% 生成内容 → 85% 渲染 HTML → 100% 落库</div>
+      <div class="node"><span class="n-code">7 · 完成</span>WS chat_updated {status:"succeeded", resume_id} → 前端「查看简历 →」→ GET /api/resumes/{id}</div>
+    </div>
+
+    <h2 id="pipe"><span class="idx">05</span>生成管线阶段</h2>
+    <div class="stages">
+      <div class="stage"><div class="pct">10%</div><div class="nm">载入资料快照</div><div class="sub">STAGE_LOAD</div></div>
+      <div class="stage"><div class="pct">25%</div><div class="nm">解析岗位要求</div><div class="sub">STAGE_ANALYZE</div></div>
+      <div class="stage"><div class="pct">60%</div><div class="nm">规划版式并生成内容</div><div class="sub">STAGE_GENERATE</div></div>
+      <div class="stage"><div class="pct">85%</div><div class="nm">渲染简历版式</div><div class="sub">STAGE_RENDER</div></div>
+      <div class="stage"><div class="pct">100%</div><div class="nm">完成（落库）</div><div class="sub">STAGE_DONE</div></div>
+    </div>
+
+    <h2 id="tree"><span class="idx">06</span>目录职责</h2>
+    <table>
+      <thead><tr><th>模块</th><th>一句话职责</th></tr></thead>
+      <tbody>
+        <tr><td><code>config.py</code></td><td>环境变量 / .env 配置（Settings 单例）</td></tr>
+        <tr><td><code>db.py</code></td><td>引擎 + WAL/structure PRAGMA + session_scope + init_db</td></tr>
+        <tr><td><code>models.py</code></td><td>SQLModel 表：Profile/Chat/ChatMessage/Resume/EditLog/AppSetting</td></tr>
+        <tr><td><code>schemas.py</code></td><td>请求/响应模型 + 枚举（ChatStatus/ThemeId/LayoutId…）</td></tr>
+        <tr><td><code>migrate.py</code></td><td>幂等迁移：jobtask→chat、resume.task_id→chat_id、补 coverage</td></tr>
+        <tr><td><code>main.py</code></td><td>FastAPI 入口：lifespan 建表+启动调度器、挂载路由/WS/静态</td></tr>
+        <tr><td><code>events.py</code></td><td>EventHub：WebSocket 客户端集合 + broadcast</td></tr>
+        <tr><td><code>scheduler.py</code></td><td>asyncio.Queue + worker + 条件 UPDATE 抢占 + 重启恢复</td></tr>
+        <tr><td><code>pipeline.py</code></td><td>run_chat()：单个 chat 的生成流水线 + 规范化</td></tr>
+        <tr><td><code>prompts.py</code></td><td>SYSTEM_* 提示词 + SPEC/COVERAGE 契约</td></tr>
+        <tr><td><code>llm.py</code></td><td>LLMClient + 运行时配置（DB 覆盖 env）+ JSON 容错解析</td></tr>
+        <tr><td><code>providers.py</code></td><td>供应商预设注册表（DeepSeek 默认）/ base_url 反查 / is_local_url</td></tr>
+        <tr><td><code>mock.py</code></td><td>无 Key 启发式降级（分析 / 生成 / 编辑 / 简历解析）</td></tr>
+        <tr><td><code>renderer.py</code></td><td>spec → 自包含 HTML；build_preview_document（含 CSP）</td></tr>
+        <tr><td><code>sanitize.py</code></td><td>nh3 白名单净化（AI 二次编辑入库前）</td></tr>
+        <tr><td><code>interview.py</code></td><td>AI 问答：生成问题 / 增量合并回答</td></tr>
+        <tr><td><code>fetch.py</code></td><td>URL 抓取 + 正文抽取 + JD 抽取（LLM 优先）</td></tr>
+        <tr><td><code>profile_import.py</code></td><td>粘贴简历文本 → 结构化资料（LLM 优先 / 启发式回落）</td></tr>
+        <tr><td><code>routers/*</code></td><td>profile / chats / resumes / ai_edit / settings / tasks(兼容层)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="dec"><span class="idx">07</span>关键设计决策</h2>
+    <div class="dec">
+      <div class="dh">D1 · 一个 chat = 一份简历（不做「一个 JD 一个任务」的批量模型）</div>
+      <p><span class="k">为什么：</span>批量模型下用户无法为<b>某个岗位单独微调资料</b>；chat 天然是「冻结的工作上下文」，持有自己的 profile_snapshot。</p>
+      <p><span class="k">代价：</span>不能一次并发产多份简历；调度器由旧 JobTask 机械重命名而来，100% 复用。</p>
+    </div>
+    <div class="dec">
+      <div class="dh">D2 · 模型输出 spec JSON 而非 HTML</div>
+      <p><span class="k">为什么：</span>① XSS 防线（autoescape 转义）；② 零 LLM 成本重排版（基于 spec 重渲染）；③ 样式一致、可编辑、可打印。</p>
+      <p><span class="k">代价：</span>必须严格遵守 SPEC_CONTRACT；_normalize_spec 要做大量字段兜底。</p>
+    </div>
+    <div class="dec">
+      <div class="dh">D3 · HTML 是简历唯一真相来源</div>
+      <p><span class="k">为什么：</span>用户会在工作台直接改 HTML，保存的也是 HTML；若以 spec 为真相，手改会在 re-render 时丢失。</p>
+      <p><span class="k">代价：</span>spec 与 html 可能不一致；「应用版式」是唯一允许分叉后重新对齐的入口。</p>
+    </div>
+    <div class="dec">
+      <div class="dh">D4 · Resume.chat_id 单向关联（删掉 Chat.resume_id）</div>
+      <p><span class="k">为什么：</span>双向引用会带来「删库绕外键」代码；单向关联下删 Chat 级联删 Resume，删 Resume 反向删 Chat，处理简单。</p>
+      <p><span class="k">代价：</span>列表每条 chat 多一次派生查询换取代码简单。</p>
+    </div>
+    <div class="dec">
+      <div class="dh">D5 · 重新生成 = 覆盖（但记 EditLog 以便回退）</div>
+      <p><span class="k">为什么：</span>一个 chat 恰好一份简历，不能堆 N 份；但用户可能后悔，留一条可回退历史。</p>
+      <p><span class="k">代价：</span>只保留「上一版」，不做完整版本树；重新生成会删除旧 EditLog。</p>
+    </div>
+
+    <h2 id="traps"><span class="idx">08</span>常见陷阱</h2>
+    <ol class="traps">
+      <li>别在 <code>pipeline</code> 里 <code>import scheduler</code> → 循环导入。取消检查用注入的 <code>should_cancel</code> 回调。</li>
+      <li><strong>chat_id ≠ resume_id</strong>：前者用于 chat.* 接口，后者用于 resume.* 接口，混用会 404。</li>
+      <li>进度会「倒退」：失败重试把 status 改回 queued 时必须<b>同步把 progress 归零</b>——这是刻意的。</li>
+      <li>WebSocket 路径仍是 <code>/ws/tasks</code>，但事件名已改为 <code>chat_*</code>，按名字找路径会找不到。</li>
+      <li><code>/api/tasks*</code> 标了 deprecated 但<b>有意保留</b>：5 个 HTTP 级测试依赖它做安全网。</li>
+    </ol>
+
+    <footer>
+      <span>DOCS / 01-architecture/overview.html</span>
+      <span>对应 Markdown: <a class="ln" href="./overview.md">overview.md</a></span>
+      <span>SELF-CONTAINED · OFFLINE · NO CDN</span>
+    </footer>
+  </main>
+</div>
+</div>
+</body>
+</html>

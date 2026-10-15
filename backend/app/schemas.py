@@ -3,7 +3,7 @@
 素材结构约定（前端与 LLM 共享）：
 
 links:        [{ "label": "GitHub", "url": "https://..." }]
-education:    [{ "school": "", "degree": "", "major": "", "start": "", "end": "", "gpa": "", "highlights": ["..."] }]
+education:    [{ "school": "", "degree": "", "major": "", "start": "", "end": "", "highlights": ["GPA/荣誉等"] }]
 experiences:  [{ "company": "", "title": "", "location": "", "start": "", "end": "",
                  "summary": "", "achievements": ["量化成果..."], "tech": ["..."] }]
 projects:     [{ "name": "", "role": "", "start": "", "end": "", "link": "",
