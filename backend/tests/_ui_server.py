@@ -46,6 +46,30 @@ def _wait_ready(base: str, timeout: float = 25.0) -> bool:
     return False
 
 
+def _remove_db_files(db_file: Path) -> None:
+    """删除隔离库文件（含 -wal / -shm），带短重试且失败**可见**。
+
+    Windows 上 `terminate()` 后文件句柄释放有延迟，裸 `unlink` 会撞
+    `PermissionError [WinError 32]`，若用 `except OSError: pass` 静默吞掉，
+    就会悄悄残留 `_ui_*.db/-wal/-shm`。这里逐文件最多重试 3 次（间隔 0.2s），
+    仍失败则打印一条提示（不静默），但**不抛出**——清理失败不应伪装成测试失败。
+    """
+    for suffix in ("", "-wal", "-shm"):
+        f = Path(str(db_file) + suffix)
+        for attempt in range(3):
+            try:
+                f.unlink()
+                break
+            except FileNotFoundError:
+                break
+            except OSError:
+                # PermissionError / WinError 32：句柄尚未释放，短重试
+                if attempt == 2:
+                    print(f"[提示] 隔离库文件暂时被占用，未能删除：{f.name}（可稍后手动删除）")
+                else:
+                    time.sleep(0.2)
+
+
 def spawn_isolated_server(name: str, port: int) -> tuple[subprocess.Popen, str, Path]:
     """启动隔离服务，返回 (进程, base_url, 数据库文件)。
 
@@ -53,13 +77,7 @@ def spawn_isolated_server(name: str, port: int) -> tuple[subprocess.Popen, str, 
     这类脚本必须在退出前自行调用 stop_isolated_server()。
     """
     db_file = ROOT / "data" / f"_ui_{name}.db"
-    for suffix in ("", "-wal", "-shm"):
-        f = Path(str(db_file) + suffix)
-        if f.exists():
-            try:
-                f.unlink()
-            except OSError:
-                pass
+    _remove_db_files(db_file)  # 清理上次可能残留的隔离库（带重试、失败可见）
 
     if not _port_free(port):
         raise RuntimeError(f"端口 {port} 已被占用，无法启动隔离服务")
@@ -84,22 +102,24 @@ def spawn_isolated_server(name: str, port: int) -> tuple[subprocess.Popen, str, 
 
 
 def stop_isolated_server(proc: subprocess.Popen, db_file: Path) -> None:
-    """终止隔离服务并清理其数据库文件。可重复调用。"""
+    """终止隔离服务并清理其数据库文件。可重复调用。
+
+    清理走 `_remove_db_files()`（重试 + 失败可见），避免 Windows 句柄竞态下
+    静默残留 `_ui_*.db/-wal/-shm`。
+    """
     try:
         proc.terminate()
         try:
             proc.wait(timeout=10)
         except Exception:
             proc.kill()
+            try:
+                proc.wait(timeout=5)  # 回收僵尸进程，尽快释放文件句柄
+            except Exception:
+                pass
     except Exception:
         pass
-    for suffix in ("", "-wal", "-shm"):
-        f = Path(str(db_file) + suffix)
-        if f.exists():
-            try:
-                f.unlink()
-            except OSError:
-                pass
+    _remove_db_files(db_file)
 
 
 @contextlib.contextmanager
