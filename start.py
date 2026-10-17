@@ -4,17 +4,22 @@
 做四件事，让你双击就能用：
   1. 准备 Python 虚拟环境（不存在就建）
   2. 安装 / 更新依赖（requirements.txt 变了才重装）
-  3. 检查端口：被**别的程序**占用 → 明确报错（不静默换端口）；空闲才起服务
+  3. 检查端口：空闲直接用；被**别的程序**占用时**自动顺延**到下一个空闲端口并醒目告知实际地址
+     （--strict-port 可改为直接报错退出；--auto-port 为兼容别名，自动顺延已是默认行为）
   4. 等健康检查通过后自动打开浏览器
 
 另外顺手处理了一个真实踩过的坑：本机若设了 HTTP_PROXY，代理会拦截
 localhost 请求（表现为 502）。脚本会为子进程设置 NO_PROXY，保证本地
 LLM（如 Ollama）与本地服务都能直连。
 
+安全底座：启动成功前会校验 `/api/health` 的 `app` 标识「确实是本应用」，
+不是本应用绝不打开浏览器；端口被别的程序占用时会打印占用者信息。
+
 用法：
-    python start.py                  # 默认 8000 端口，自动开浏览器
-    python start.py --port 9000      # 换端口（被别的程序占用会明确报错，不会静默换端口）
-    python start.py --auto-port      # 端口被占用时顺延（只有显式带该参数才顺延）
+    python start.py                  # 默认 8000 端口；被占用时自动顺延并告知实际端口
+    python start.py --port 9000      # 指定端口（被占用时同样自动顺延）
+    python start.py --strict-port    # 端口被占用时直接报错退出，不自动顺延
+    python start.py --auto-port      # 兼容别名（自动顺延已是默认行为，保留以兼容旧脚本/习惯）
     python start.py --no-browser     # 不自动开浏览器
     python start.py --reload         # 开发模式（改代码自动重启）
     python start.py --reinstall      # 强制重装依赖
@@ -227,7 +232,7 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
 
 
 def find_port(preferred: int, host: str = "127.0.0.1", tries: int = 20) -> int:
-    """从 preferred 开始顺延找空闲端口（仅 --auto-port 显式开启时调用）。"""
+    """从 preferred 开始顺延找空闲端口（默认行为；--strict-port 时不顺延）。"""
     for offset in range(tries):
         candidate = preferred + offset
         if not port_in_use(candidate, host):
@@ -434,20 +439,22 @@ def describe_port_owner(port: int) -> str:
 
 
 def port_busy_error(port: int, host: str) -> None:
-    """端口被别的程序占用时的明确报错（默认行为，不静默换端口）。"""
+    """严格模式（`--strict-port`）下端口被别的程序占用时的明确报错。"""
     owner_text = describe_port_owner(port)
     die(
         f"端口 {port} 已被别的程序占用，启动中止。\n"
         f"\n"
         f"占用者：\n{owner_text}\n"
         f"\n"
+        f"你显式加了 --strict-port，因此这里直接报错（默认会自动改用空闲端口）。\n"
         f"不会静默更换端口——静默换端口曾导致别的项目界面错乱：\n"
         f"若这里悄悄改到别的端口，而客户端/文档仍以 {port} 为约定地址，\n"
         f"用户打开的就会是占用 {port} 的那个服务，而不是本应用。\n"
         f"\n"
-        f"两个出路：\n"
-        f"  1. 换一个空闲端口启动：  python start.py --port <空闲端口>\n"
-        f"  2. 结束上面占用 {port} 的进程，然后重新启动\n"
+        f"三个出路：\n"
+        f"  1. 去掉 --strict-port，让启动器自动改用空闲端口\n"
+        f"  2. 换一个空闲端口启动：  python start.py --port <空闲端口>\n"
+        f"  3. 结束上面占用 {port} 的进程，然后重新启动\n"
     )
 
 
@@ -589,13 +596,15 @@ def _port_type(value: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="AI Resume Generator 一键启动")
     parser.add_argument("--port", type=_port_type, default=8000,
-                        help="监听端口（默认 8000；被别的程序占用时明确报错，不会静默换端口）")
+                        help="监听端口（默认 8000；被别的程序占用时自动顺延到下一个空闲端口）")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
     parser.add_argument("--no-browser", action="store_true", help="不要自动打开浏览器")
     parser.add_argument("--reload", action="store_true", help="开发模式：改代码自动重启")
     parser.add_argument("--reinstall", action="store_true", help="强制重新安装依赖")
+    parser.add_argument("--strict-port", action="store_true",
+                        help="端口被占用时直接报错退出，不自动顺延")
     parser.add_argument("--auto-port", action="store_true",
-                        help="端口被占用时自动顺延到空闲端口（默认关闭：被占用即报错）")
+                        help="兼容别名：自动顺延已是默认行为，保留以兼容旧脚本/习惯")
     args = parser.parse_args()
 
     # 横幅放在 ensure_venv() 之后：重执行时父进程会直接退出、由子进程打印，
@@ -622,17 +631,17 @@ def main() -> int:
         return 0
 
     if busy:
-        if args.auto_port:
-            # 只有显式 --auto-port 才顺延，且提示必须醒目：
-            # 顺延后的端口与「用户/文档以 --port 为契约」的预期不一致。
+        if args.strict_port:
+            # 严格模式（--strict-port）：指出占用者、影响说明与两个出路（die 退出码 1）。
+            port_busy_error(args.port, args.host)
+        else:
+            # 默认（含 --auto-port 兼容别名）：自动顺延，但必须**醒目告知**实际端口——
+            # 「问题不在换端口本身，而在静默」：用户若仍按原端口访问会连到占用者，
+            # 所以这里把新地址、原端口的占用情况、以及如何改回严格模式都说清楚。
             port = find_port(args.port, args.host)
             say(f"[注意] {args.port} 被占用，已顺延到 {port}；本服务不在 {args.port} 上！")
-            say(f"        若在找 {args.port}：请先关闭占用它的程序；")
-            say(f"        去掉 --auto-port 可让它明确报错而不是顺延。")
-        else:
-            # 默认：严格报错——指出占用者、影响说明与两个出路（die 退出码 1）。
-            # 不静默换端口正是本修复的核心：换端口曾导致别的项目界面错乱。
-            port_busy_error(args.port, args.host)
+            say(f"        将打开 http://{args.host}:{port}；如需在 {args.port} 上运行，请先关闭占用它的程序。")
+            say(f"        想改为「被占用即报错」：加 --strict-port 重新启动。")
     else:
         port = args.port
 
