@@ -24,6 +24,10 @@ from .scheduler import scheduler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("resume")
 
+#: 稳定的应用标识，供启动器做「端口上跑的是不是本应用」的强校验。
+#: 启动器 start.py 里有一份同值常量（跨进程，无法 import），两处必须保持一致。
+APP_ID = "ai-resume-generator"
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -49,9 +53,16 @@ app.include_router(settings_router.router)
 
 @app.get("/api/health")
 def health(session: Session = Depends(get_session)) -> dict:
-    # 读取运行时配置（DB 覆盖 .env），与「设置」页保持一致，而不是只看 .env
+    # 读取运行时配置（DB 覆盖 .env），与「设置」页保持一致，而不是只看 .env。
+    # 除 llm_enabled 外，返回稳定应用标识 app：启动器据此判定该端口上跑的是
+    # 不是本应用，避免把别的服务（恰好在 /api/health 返回 {"ok": true}）误判为
+    # 自己的启动成功——那会打开「别人的页面」。
     cfg = get_runtime_config(session)
-    return {"ok": True, "llm_enabled": bool((cfg.get("api_key") or "").strip())}
+    return {
+        "ok": True,
+        "app": APP_ID,
+        "llm_enabled": bool((cfg.get("api_key") or "").strip()),
+    }
 
 
 @app.websocket("/ws/tasks")

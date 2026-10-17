@@ -72,11 +72,33 @@ def _wait_result(page, needle: str, timeout: int = 25000) -> str:
     return page.inner_text("#cfg-test-result")
 
 
-def main() -> int:
+def _remove_db_files() -> None:
+    """删除隔离库文件（含 -wal/-shm）。
+
+    Windows 上 proc.terminate() 后文件句柄可能还没释放，裸 unlink 会撞
+    PermissionError [WinError 32]（QA 实测 RC=1 复现 2/2）。这里逐文件
+    try/except + 短重试，与 _ui_server.stop_isolated_server 的做法对齐。
+    """
+    deadline = time.time() + 5.0
     for suffix in ("", "-wal", "-shm"):
         f = Path(str(DB_FILE) + suffix)
-        if f.exists():
-            f.unlink()
+        while True:
+            try:
+                f.unlink()
+                break
+            except FileNotFoundError:
+                break
+            except PermissionError:
+                if time.time() >= deadline:
+                    print(f"[提示] 隔离库文件暂时被占用，未能删除：{f.name}")
+                    break
+                time.sleep(0.3)
+            except OSError:
+                break
+
+
+def main() -> int:
+    _remove_db_files()
 
     env = dict(os.environ)
     env["DATABASE_URL"] = f"sqlite:///{DB_FILE.as_posix()}"
@@ -248,10 +270,7 @@ def main() -> int:
             proc.wait(timeout=10)
         except Exception:
             proc.kill()
-        for suffix in ("", "-wal", "-shm"):
-            f = Path(str(DB_FILE) + suffix)
-            if f.exists():
-                f.unlink()
+        _remove_db_files()
 
     if _LOGS:
         print("\n⚠️  浏览器控制台错误：")
