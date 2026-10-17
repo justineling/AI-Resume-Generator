@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import errno
 import hashlib
 import io
 import json
@@ -181,14 +182,18 @@ def _is_loopback_host(host: str) -> bool:
 
 
 def _connect_ok(addr: str, port: int, family: int) -> bool | None:
-    """尝试 TCP 连接 addr:port。
+    """尝试 TCP 连接 addr:port（快速路径）。
 
     Returns:
         True: 连接成功（端口被监听）。
-        False: 连接被拒（端口空闲）。
+        False: 连接被拒 / 超时（端口可能空闲，也可能 backlog 已满）。
         None: 探测本身不可用（如系统没有 IPv6、端口越界抛
             OverflowError、地址非法抛 ValueError），调用方需降级处理，
             不当成占用，避免误报。
+
+    注意：**不能只用 connect 判定占用**。对「listen 但从不 accept」或 backlog
+    已满的占用者，connect 会占满对方 backlog 后被 RST 拒绝，从而误判空闲。
+    故 `_probe_occupied()` 会在 connect 失败时用 bind 兜底。
     """
     try:
         with socket.socket(family, socket.SOCK_STREAM) as s:
@@ -196,6 +201,64 @@ def _connect_ok(addr: str, port: int, family: int) -> bool | None:
             return s.connect_ex((addr, port)) == 0
     except (OSError, ValueError, OverflowError):
         return None
+
+
+#: 「地址已被占用」的 errno 集合（Windows 的 10048 = WSAEADDRINUSE）。
+_EADDRINUSE_VALUES: set[int] = {errno.EADDRINUSE}
+if hasattr(errno, "WSAEADDRINUSE"):
+    _EADDRINUSE_VALUES.add(errno.WSAEADDRINUSE)  # type: ignore[attr-defined]
+
+
+def _bind_ok(addr: str, port: int, family: int) -> bool | None:
+    """尝试 bind（**绝不设 SO_REUSEADDR**）判断端口是否真的可绑定。
+
+    「我能不能 bind」才是「我能不能起来」的真判据：即使 connect 因 backlog 满被拒，
+    bind 仍会以 EADDRINUSE 失败，从而正确判定为占用。
+
+    Returns:
+        True: 可绑定（端口空闲）。
+        False: bind 因 EADDRINUSE 失败（端口被占用）。
+        None: 其他异常（权限 / 地址不可用 / 协议栈不支持）——探测不可用，调用方降级。
+    """
+    try:
+        s = socket.socket(family, socket.SOCK_STREAM)
+    except (OSError, ValueError, OverflowError):
+        return None
+    try:
+        # 绝不设 SO_REUSEADDR：Windows 上设了会允许绑到已被占用的端口，导致误判空闲。
+        s.bind((addr, port))
+        return True
+    except OSError as exc:
+        winerror = getattr(exc, "winerror", None)
+        if exc.errno in _EADDRINUSE_VALUES or winerror in _EADDRINUSE_VALUES:
+            return False
+        return None
+    except (ValueError, OverflowError):
+        return None
+    finally:
+        try:
+            s.close()
+        except OSError:
+            pass
+
+
+def _probe_occupied(addr: str, port: int, family: int) -> bool | None:
+    """判断 addr:port 是否被占用：connect 快速路径 + bind 兜底。
+
+    connect 成功 → 占用；connect 失败（拒绝/超时）→ 再用 bind 判定
+    （bind 成功=空闲、EADDRINUSE=占用），保证「listen 不 accept / backlog 满」时
+    不会误判空闲，且连续探测结果稳定（幂等）。
+    """
+    connected = _connect_ok(addr, port, family)
+    if connected is True:
+        return True
+    if connected is None:
+        # 探测本身不可用（如协议栈不支持）；bind 同样不可用，直接降级
+        return None
+    bound = _bind_ok(addr, port, family)
+    if bound is None:
+        return None
+    return not bound  # bound=True 表示空闲 → 占用=False
 
 
 def _note_ipv6_unavailable() -> None:
@@ -210,22 +273,24 @@ def _note_ipv6_unavailable() -> None:
 
 
 def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
-    """端口是否已被监听（双栈探测）。
+    """端口是否已被监听（双栈探测，connect + bind 兜底）。
 
     - 回环语义的 host（localhost / 127.x.x.x / ::1 / 0.0.0.0 / 缺省）：
       **同时**探测 127.0.0.1 与 [::1]，任一被监听即视为占用。
       只探 IPv4 会把「只听 IPv6 回环的服务」误判为空闲（真实事故模式）。
     - 显式指定的其他地址：只探测对应地址（含 ':' 的按 IPv6 探测）。
+    - 每个地址用 `_probe_occupied()`（connect 失败时 bind 兜底），
+      避免「listen 不 accept / backlog 满」被 connect 误判为空闲，且结果幂等。
     """
     if _is_loopback_host(host):
-        used_v4 = _connect_ok("127.0.0.1", port, socket.AF_INET)
-        used_v6 = _connect_ok("::1", port, socket.AF_INET6)
+        used_v4 = _probe_occupied("127.0.0.1", port, socket.AF_INET)
+        used_v6 = _probe_occupied("::1", port, socket.AF_INET6)
         if used_v6 is None:
             _note_ipv6_unavailable()
         return used_v4 is True or used_v6 is True
 
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    used = _connect_ok(host, port, family)
+    used = _probe_occupied(host, port, family)
     if used is None and family == socket.AF_INET6:
         _note_ipv6_unavailable()
     return used is True

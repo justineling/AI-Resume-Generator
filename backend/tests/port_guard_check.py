@@ -19,6 +19,8 @@
   i. bat 严格路径   → `start.bat --strict-port` 失败时 [ERROR] 可见、退出码非 0（仅 Windows）
   j. bat 默认顺延   → `start.bat --port 8269`（不带参数）→ 顺延到 8270 并就绪（仅 Windows）
   k. bat 退出码透传 → 复用已有本应用 → `start.bat` 退出码 0（仅 Windows）
+  l. backlog 幂等   → listen(1) 不 accept 的占用者，`port_in_use` 连续 3 次均为 True
+  m. backlog 默认顺延 → 该占用者存在时，默认顺延目标 ≠ 原端口且真正就绪（health 200）
 
 用法（项目根目录，用项目虚拟环境的 Python 跑）：
     .venv/Scripts/python.exe backend/tests/port_guard_check.py
@@ -33,6 +35,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import re
 import signal
 import socket
 import socketserver
@@ -85,6 +88,26 @@ class DummyListener:
 
     def close(self) -> None:
         self._stop.set()
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+class BacklogListener:
+    """`listen(1)` 且**从不 accept** 的占用者。
+
+    用于复现缺陷：connect 探测会占满 backlog 后被 RST 拒绝，若只看 connect
+    就会把「仍在监听」误判为「空闲」。修复后 connect 失败会 bind 兜底，
+    因此连续探测结果必须稳定为「占用」。
+    """
+
+    def __init__(self, port: int) -> None:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("127.0.0.1", port))
+        self.sock.listen(1)  # backlog=1；不 accept，槽位很快被填满
+
+    def close(self) -> None:
         try:
             self.sock.close()
         except OSError:
@@ -250,6 +273,52 @@ def _run_bump(busy_port: int, next_port: int, db_name: str,
         cleanup_db_files()
 
 
+def _run_bump_any(busy_port: int, db_name: str) -> tuple[str, int]:
+    """默认顺延：解析**实际**顺延目标端口，断言目标 != 原端口且就绪。
+
+    与 `_run_bump` 的区别：不预设目标端口，而是从输出里解析，从而能捕获
+    「顺延到原端口（等于没顺延）」这类缺陷。返回 (输出文本, 目标端口)。
+    """
+    proc = popen_start(["--port", str(busy_port)], _isolated_env(db_name))
+    lines: list[str] = []
+    target: int | None = None
+    up = False
+    try:
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line = line.rstrip()
+            lines.append(line)
+            print(line)
+            m = re.search(r"顺延到 (\d+)", line)
+            if m and target is None:
+                target = int(m.group(1))
+            if target is not None and start_mod.is_our_app(target):
+                up = True
+                break
+        text = "\n".join(lines)
+        assert target is not None, "应打印顺延目标端口"
+        assert target != busy_port, f"顺延目标不应等于原端口（{target} == {busy_port}）"
+        assert up, f"顺延后的 {target} 应就绪（health 200 且 app 标识匹配）"
+        assert f"不在 {busy_port} 上" in text, "顺延提示必须醒目：本服务不在原端口上"
+        return text, target
+    finally:
+        kill_tree(proc)
+        try:
+            proc.wait(timeout=30)
+        except Exception:
+            pass
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+        if target is not None:
+            assert wait_port_free(target), f"顺延端口 {target} 未释放"
+        cleanup_db_files()
+
+
 def _run_strict(busy_port: int, db_name: str) -> str:
     """在 busy_port 已被占用时跑 `--strict-port`，断言报错且**无**顺延措辞。"""
     result = run_start(["--port", str(busy_port), "--strict-port", "--no-browser"])
@@ -399,6 +468,35 @@ def scenario_fake_service() -> bool:
         srv.close()
 
 
+def scenario_backlog_idempotent() -> bool:
+    """l. backlog 幂等：listen(1) 不 accept 的占用者 → port_in_use 连续 3 次都为 True。"""
+    port = 8275
+    lst = BacklogListener(port)
+    try:
+        results = [start_mod.port_in_use(port) for _ in range(3)]
+        print(f"[单元] backlog 占用 {port}：port_in_use x3 = {results}")
+        assert results == [True, True, True], f"backlog 满时探测不幂等（误判空闲）：{results}"
+        # 交叉验证：该端口确实无法 bind（真的被占用）
+        assert start_mod._bind_ok("127.0.0.1", port, socket.AF_INET) is False, \
+            "该端口应确实无法 bind（确实被占用）"
+        print("[通过] backlog 场景：port_in_use 连续 3 次均为 True（幂等）")
+        return True
+    finally:
+        lst.close()
+
+
+def scenario_backlog_bump() -> bool:
+    """m. backlog 默认顺延：占用者 listen 不 accept 时，默认顺延目标必须 ≠ 原端口且就绪。"""
+    busy = 8276
+    lst = BacklogListener(busy)
+    try:
+        _text, target = _run_bump_any(busy, "_port_guard_backlog.db")
+        print(f"[通过] backlog 占用 {busy} → 默认顺延到 {target}（≠ {busy}），health 200 且 app 标识匹配")
+        return True
+    finally:
+        lst.close()
+
+
 def scenario_race_guard() -> bool:
     """h. 竞态兜底：已退出的子进程 → wait_for_health 在 1 秒内返回失败，且不打开浏览器。"""
     port = 8270
@@ -528,7 +626,8 @@ def main() -> int:
 
     scenarios = [scenario_default_auto_port, scenario_strict_port, scenario_ipv4_busy,
                  scenario_ipv6_busy, scenario_auto_port_compat, scenario_reuse,
-                 scenario_fake_service, scenario_race_guard]
+                 scenario_fake_service, scenario_backlog_idempotent, scenario_backlog_bump,
+                 scenario_race_guard]
     if IS_WINDOWS:
         scenarios += [scenario_bat, scenario_bat_auto_port, scenario_bat_reuse]
     else:
@@ -549,7 +648,7 @@ def main() -> int:
     print("\n" + "=" * 68)
     for name, ok in results.items():
         print(f"  {'PASS' if ok else 'FAIL'}  {name}")
-    all_ok = all(results.values()) and len(results) >= 8
+    all_ok = all(results.values()) and len(results) >= 10
     print(f"\n结果：{'全部通过' if all_ok else '存在失败'}")
     return 0 if all_ok else 1
 
