@@ -14,7 +14,7 @@ rem    1/5 检查环境      node / npm / rustc / cargo / .venv
 rem    2/5 构建依赖      pyinstaller、pillow；缺失时生成全套应用图标
 rem    3/5 打包后端      PyInstaller -> packaging\out\resume-server.exe -> binaries\
 rem    4/5 构建安装包    npm install + tauri build（首次 10-20 分钟，有心跳）
-rem    5/5 报告产物      打印最新安装包的路径与大小
+rem    5/5 报告产物      打印最新安装包的路径与大小，并**自动打开安装程序**
 rem
 rem  注意：本文件必须保持 CRLF 换行；末尾用 `endlocal & exit /b %RC%` 单行形式，
 rem  否则退出码会永远是 0（先 endlocal 会丢变量）。
@@ -33,6 +33,16 @@ set "STALE=%SRC_TAURI%\target\release\bundle\_stale"
 set "TRIPLE="
 set "OUT="
 set "RC=0"
+
+rem 参数（都可省略）：
+rem   --no-launch  构建成功后不自动打开安装程序（自动化/CI 用）
+rem   --no-pause   结束后不等待按键（自动化/CI 用）
+set "AUTO_LAUNCH=1"
+set "DO_PAUSE=1"
+for %%A in (%*) do (
+    if /i "%%~A"=="--no-launch" set "AUTO_LAUNCH="
+    if /i "%%~A"=="--no-pause" set "DO_PAUSE="
+)
 
 echo.
 echo ================================================================
@@ -228,12 +238,14 @@ echo    数据保存在：%%LOCALAPPDATA%%\AIResumeGenerator\data
 echo ================================================================
 echo.
 
-rem 用 set /p 而不是 choice：stdin 被重定向（自动化/CI）时 choice 会报
-rem "The file is either empty or does not contain the valid choices"，
-rem 而 set /p 遇到 EOF 只是留空，安静跳过。
-set "LAUNCH="
-set /p "LAUNCH=  现在启动安装程序吗？(Y/N) "
-if /i not "!LAUNCH!"=="Y" goto :done
+rem 构建成功后**自动打开安装程序**（不再询问 Y/N）：
+rem   构建的意义就是装一次验证，多问一步纯属打断流程。
+rem   start 的第一个参数是「窗口标题」，必须留空 ""，否则含空格的路径会被当成标题。
+rem   自动化里不想弹窗时加 --no-launch。
+if not defined AUTO_LAUNCH goto :done
+echo    正在启动安装程序……
+echo    （安装向导会弹出来；如需跳过，下次运行加 --no-launch）
+echo.
 start "" "!OUT!"
 
 :done
@@ -344,5 +356,6 @@ if "!RC!"=="0" (
 ) else (
     echo 构建未成功，请按上面的提示处理后重试。
 )
-pause
+rem 自动化（--no-pause）时不要停下来等按键
+if defined DO_PAUSE pause
 endlocal & exit /b %RC%
