@@ -5,6 +5,10 @@
 
 相关文件：`start.py`（一键启动核心逻辑）、`start.bat`、`start.sh`、`requirements.txt`、`.env.example`、`backend/app/config.py`。
 
+> **想给没有 Python 的人用？** 本文讲的是 web 端（本机跑 `start.py`、浏览器访问）。
+> 如果要产出一个双击即用的 Windows 安装包，看 [`desktop-installer.md`](./desktop-installer.md)。
+> 两种形态**数据相互独立**：web 端用 `<项目根>/data/app.db`，桌面端用 `%LOCALAPPDATA%\AIResumeGenerator\data`。
+
 ---
 
 ## 1. 环境要求
