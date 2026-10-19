@@ -107,6 +107,25 @@ start.bat --port 9000              # Windows 双击场景
 > **无需 API Key 也能直接启动** —— 会进入降级模式，用启发式规则完成同样的流水线，
 > 保证并发、进度、渲染、编辑、导出这些工程能力都能真实跑通。详见 [第 10 节](#10-降级模式无-api-key-也能跑)。
 
+### 打成 exe 安装包（发给没有 Python 的人）
+
+```bat
+构建安装包.bat
+```
+
+产出 `desktop/src-tauri/target/release/bundle/nsis/AI Resume Generator_<版本>_x64-setup.exe`（约 23 MB），
+对方双击即装，**默认安装到 `D://AI Resume Generator`**，不需要 Python、不需要命令行。
+
+桌面端与 web 端**数据相互独立**：
+
+| | 数据位置 |
+|---|---|
+| web 端（`start.py`） | `<项目根>/data/app.db` |
+| 桌面端（exe） | `%LOCALAPPDATA%\AIResumeGenerator\data\app.db` |
+
+首次构建需 Rust 编译，约 10–20 分钟。完整说明（架构、五个构建阶段、日志位置、排障）见
+[docs/06-operations/desktop-installer.md](docs/06-operations/desktop-installer.md)。
+
 ### 手动启动（想自己控制每一步时）
 
 ```bash
@@ -187,6 +206,16 @@ AI Resume Generator/
 ├── start.py                       # ★ 一键启动：建环境 → 装依赖 → 起服务 → 开浏览器
 ├── start.bat                      # Windows 双击启动
 ├── start.sh                       # macOS / Linux 启动
+├── 构建安装包.bat                  # ★ 打成 Windows exe 安装包（给没有 Python 的人用）
+├── desktop/                       # Tauri 2 桌面外壳（窗口 + 启动 sidecar + 导航）
+│   ├── dist/index.html            # 占位页（「正在启动」，真实界面由 sidecar 提供）
+│   └── src-tauri/                 # Rust 外壳 / tauri.conf.json / 图标 / capabilities
+├── packaging/                     # 打包脚本
+│   ├── server_entry.py            # sidecar 入口：选端口 → 起 uvicorn → 打印 APP_READY
+│   ├── resume-server.spec         # PyInstaller 配置（onefile，收集 static）
+│   ├── tauri_build.py             # 带心跳地跑 tauri build（并钉住 CARGO_TARGET_DIR）
+│   ├── repack_nsis.py             # 改默认安装目录为 D://AI Resume Generator 后重打包
+│   └── make_icon.py               # 生成应用图标
 ├── requirements.txt
 ├── .env.example
 ├── docs/                          # 开发者文档（入口：docs/README.md）
@@ -196,7 +225,7 @@ AI Resume Generator/
 │   ├── 03-api/                    # API 参考
 │   ├── 04-frontend/               # 前端模块划分 / 设计系统
 │   ├── 05-testing/                # 测试体系 / 隔离机制
-│   ├── 06-operations/             # 启动配置 / LLM 供应商
+│   ├── 06-operations/             # 启动配置 / LLM 供应商 / 桌面端安装包
 │   └── 99-history/                # 归档的历史设计稿
 ├── data/                          # SQLite 数据库（运行时生成）
 └── backend/

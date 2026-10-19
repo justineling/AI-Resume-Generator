@@ -35,6 +35,7 @@
 | [05-testing/isolation.md](./05-testing/isolation.md) | 测试数据隔离：隔离库防污染真实数据 | 测试组 |
 | [06-operations/getting-started.md](./06-operations/getting-started.md) | 启动与配置：三种启动方式、首次配置、数据与备份、故障排查 | 产品（本文档集） |
 | [06-operations/llm-providers.md](./06-operations/llm-providers.md) | LLM 供应商：10 个预设、配置步骤、测试连接、降级模式 | 产品 |
+| [06-operations/desktop-installer.md](./06-operations/desktop-installer.md) | 桌面端安装包：Tauri 2 + Python sidecar、构建流程、默认装 D 盘、数据与日志位置、启动排障 | 运维 |
 
 > `01-architecture/`、`03-api/`、`04-frontend/`、`05-testing/` 由对应同事维护，本页只做导航，不复述其内容。
 > 旧设计稿已归档到 [`99-history/`](./99-history/)（`system_design.md` + 类图/时序图），它是「聊天式工作区重构」的历史方案，部分内容已被后续实现超越；当前系统以本索引下的文档为准。
@@ -47,6 +48,7 @@
 |---|---|
 | 把项目跑起来 / 换端口 / 排查服务起不来 | [06-operations/getting-started.md](./06-operations/getting-started.md) |
 | 配置大模型（DeepSeek / OpenAI / Ollama…）或没有 API Key 也能用 | [06-operations/llm-providers.md](./06-operations/llm-providers.md) |
+| 打一个 exe 安装包给没有 Python 的人用 / 桌面端启动白屏 / 安装目录跑偏 | [06-operations/desktop-installer.md](./06-operations/desktop-installer.md) |
 | 搞懂怎么填「资料」，或直接粘贴一份现成简历文本导入 | [02-features/profile-library.md](./02-features/profile-library.md) |
 | 生成一份简历（整体流程、按钮状态、取消/重试） | [02-features/chat-workspace.md](./02-features/chat-workspace.md) |
 | 生成前被问了一堆问题，想知道为什么、Esc 和「跳过」有什么差别 | [02-features/ai-interview.md](./02-features/ai-interview.md) |

@@ -15,3 +15,13 @@ backend/tests/shots/
 .vscode/
 .idea/
 .DS_Store
+
+# ---- 桌面安装包构建产物 ----
+# 注意：desktop/dist/ 是源码（占位页），不能整体忽略
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/src-tauri/gen/
+desktop/build.log
+packaging/out/
+packaging/build/

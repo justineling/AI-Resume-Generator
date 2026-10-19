@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>AI Resume Generator · 正在启动</title>
+  <style>
+    /* Ark 家族：近黑底、青色信号色、方角、等宽数据字体、克制动效 */
+    :root {
+      --ink: #080a0b;
+      --surface: #0c1012;
+      --fg: #e9eef0;
+      --muted: #7b8589;
+      --signal: #18d1ff;
+      --danger: #ff5a5a;
+      --rule: rgba(233, 238, 240, 0.10);
+      --font-ui: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", -apple-system, "Segoe UI", sans-serif;
+      --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--ink);
+      color: var(--fg);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* 蓝图底纹：极淡网格，暗示「工业信息系统」 */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    .stage {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 32px;
+      text-align: center;
+    }
+
+    /* 三根青色柱状：与前端 favicon / 应用图标同构 */
+    .mark {
+      display: flex;
+      align-items: flex-end;
+      gap: 7px;
+      height: 44px;
+      margin-bottom: 6px;
+    }
+    .mark i {
+      display: block;
+      width: 9px;
+      background: var(--signal);
+      animation: bar 1.4s ease-in-out infinite;
+    }
+    .mark i:nth-child(1) { height: 18px; opacity: 0.55; animation-delay: 0s; }
+    .mark i:nth-child(2) { height: 34px; opacity: 1;    animation-delay: 0.16s; }
+    .mark i:nth-child(3) { height: 25px; opacity: 0.75; animation-delay: 0.32s; }
+
+    @keyframes bar {
+      0%, 100% { transform: scaleY(1); }
+      50%      { transform: scaleY(0.55); }
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      line-height: 1.5;
+    }
+
+    .hint {
+      margin: 0;
+      max-width: 46ch;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    /* 进度条：不确定态，纯装饰，让「没卡死」可见 */
+    .track {
+      width: min(320px, 60vw);
+      height: 2px;
+      background: var(--rule);
+      overflow: hidden;
+    }
+    .track span {
+      display: block;
+      width: 34%;
+      height: 100%;
+      background: var(--signal);
+      animation: slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes slide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(320%); }
+    }
+
+    /* 错误态：外壳通过 eval 注入文本后由 .is-error 切换配色 */
+    pre#err {
+      margin: 0;
+      max-width: 62ch;
+      padding: 14px 16px;
+      border: 1px solid rgba(255, 90, 90, 0.35);
+      background: rgba(255, 90, 90, 0.06);
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+      text-align: left;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: auto;
+      max-height: 42vh;
+    }
+
+    body.is-error .mark i { animation: none; background: var(--danger); }
+    body.is-error .track { display: none; }
+    body.is-error h1 { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <div class="mark" aria-hidden="true"><i></i><i></i><i></i></div>
+    <p class="eyebrow">AI RESUME GENERATOR / BOOT</p>
+    <h1 id="msg">正在启动 AI Resume Generator…</h1>
+    <p class="hint" id="hint">首次启动需要解压并拉起本地服务，通常 2-5 秒，请稍候。</p>
+    <div class="track" aria-hidden="true"><span></span></div>
+    <pre id="err" hidden></pre>
+  </main>
+</body>
+</html>
