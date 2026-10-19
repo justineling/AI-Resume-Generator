@@ -388,25 +388,37 @@ fn rebuild_window(app: &AppHandle, url_text: &str) -> Result<(), String> {
         .parse()
         .map_err(|err| format!("解析地址失败：{err}"))?;
 
+    // 记录旧窗口的「最大化」状态：桌面端默认最大化（不是 fullscreen ——
+    // fullscreen 会隐藏标题栏，用户将无法关闭窗口）。
+    let old = app.get_webview_window("main");
+    let was_maximized = old.as_ref().map(|w| w.is_maximized().unwrap_or(false)).unwrap_or(false);
+
     let mut builder = WebviewWindowBuilder::new(app, "app", WebviewUrl::External(url))
         .title("AI Resume Generator")
         .inner_size(1280.0, 900.0)
         .min_inner_size(960.0, 640.0)
-        .center();
+        .maximized(was_maximized);
 
-    // 沿用占位窗口的位置与尺寸，视觉上不突兀
-    if let Some(old) = app.get_webview_window("main") {
-        if let Ok(size) = old.inner_size() {
-            builder = builder.inner_size(f64::from(size.width), f64::from(size.height));
-        }
-        if let Ok(pos) = old.outer_position() {
-            builder = builder.position(f64::from(pos.x), f64::from(pos.y));
+    // 非最大化时沿用旧窗口的位置与尺寸，视觉上不突兀
+    if let Some(old) = old.as_ref() {
+        if !was_maximized {
+            if let Ok(size) = old.inner_size() {
+                builder = builder.inner_size(f64::from(size.width), f64::from(size.height));
+            }
+            if let Ok(pos) = old.outer_position() {
+                builder = builder.position(f64::from(pos.x), f64::from(pos.y));
+            }
         }
     }
 
     let window = builder
         .build()
         .map_err(|err| format!("创建应用窗口失败：{err}"))?;
+
+    // 双保险：部分环境下 builder 的 maximized 在窗口创建后不生效，再显式调用一次。
+    if was_maximized {
+        let _ = window.maximize();
+    }
 
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {

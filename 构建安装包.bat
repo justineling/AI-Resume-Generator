@@ -137,6 +137,22 @@ rem ---------------------------------------------------------------------------
 echo [4/5] 构建 NSIS 安装包...
 echo    首次构建需要编译 Rust 依赖，通常 10-20 分钟，请勿关闭本窗口。
 
+rem ---- 关键：把 cargo 产物目录钉死在本项目内 ----
+rem 本机（以及不少开发机）在**用户级环境变量**里设了 CARGO_TARGET_DIR，指向别的项目
+rem （例如 D:\forest-gap-tools\rust\target）。若不处理，本次构建的 exe / 安装包会写进
+rem 那个共享目录：既与本项目「产物应在本项目内」的约定不符，也会和别人的构建产物混在
+rem 一起（曾出现过「关掉的窗口显示的是另一个项目的页面」这类混淆事故）。
+rem tauri_build.py 会用 --target-dir 把 CARGO_TARGET_DIR 覆盖成 %SRC_TAURI%\target
+rem （默认值即如此），这里先如实告知，避免用户看到日志里的路径感到意外。
+if defined CARGO_TARGET_DIR (
+    echo.
+    echo    [环境提示] 检测到全局环境变量 CARGO_TARGET_DIR：
+    echo       %CARGO_TARGET_DIR%
+    echo    它会让产物写到上面这个目录、而不是本项目内。本次构建会**忽略**它，
+    echo    产物固定输出到：%SRC_TAURI%\target\release\
+    echo    （仅影响本次构建，不会修改你的系统环境变量。）
+)
+
 rem 把上一次的安装包挪走：避免「构建失败后用户双击了旧包」
 if exist "%BUNDLE%\*.exe" (
     if not exist "%STALE%" mkdir "%STALE%"
@@ -163,6 +179,23 @@ rem 故统一交给 packaging\tauri_build.py（只依赖已有的 .venv）。
 set "BUILD_RC=!errorlevel!"
 if not "!BUILD_RC!"=="0" goto :build_failed
 echo    构建命令已完成。
+echo.
+
+rem ---------------------------------------------------------------------------
+rem  阶段 4.5：把默认安装目录改成 D:\<产品名> 并重打包
+rem ---------------------------------------------------------------------------
+rem  Tauri 的 currentUser 模式默认装到 %LOCALAPPDATA%\<产品名>，而且 NSIS 会把
+rem  「上一次的安装路径」记进注册表并优先复用 —— 只要有人用 /D= 装过一次，
+rem  之后即使不带参数也会沿用那个目录（本项目就因此一度默认装到 D:\_aitest\app）。
+rem  这里用 Tauri 已展开好的 installer.nsi 改写 $INSTDIR 再用 makensis 重编译，
+rem  不改动整份模板，模板升级也不会失效。重打包失败时保留 tauri 原包。
+echo    设置默认安装目录为 D:\AI Resume Generator ...
+"%VENV_PY%" "%PACKAGING%\repack_nsis.py" --desktop "%DESKTOP%" --drive D
+if errorlevel 1 (
+    echo    [注意] 重打包未完成，将使用 tauri 原安装包（默认目录仍是用户目录）。
+) else (
+    echo    默认安装目录已设置。
+)
 echo.
 
 rem ---------------------------------------------------------------------------
