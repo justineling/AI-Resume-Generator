@@ -1,0 +1,13 @@
+{
+  "name": "ai-resume-generator-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AI Resume Generator 桌面外壳（Tauri 2 + Python sidecar）",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
