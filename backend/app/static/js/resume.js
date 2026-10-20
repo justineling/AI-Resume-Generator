@@ -1,6 +1,6 @@
 // 04 简历工作台：所见即所得编辑 / HTML 源码 / AI 二次编辑 / 版式 / 打印导出
 import { api } from "./api.js";
-import { $, $$, el, toast, fmtTime, escapeHtml } from "./ui.js";
+import { $, $$, el, toast, fmtTime, escapeHtml, confirmDialog } from "./ui.js";
 
 const LAYOUTS = [
   { id: "single-column", name: "单栏经典", desc: "ONE COLUMN", bars: [100] },
@@ -227,7 +227,12 @@ async function downloadResume() {
 async function deleteResume() {
   if (!current) return;
   const label = current.title || `简历 #${current.id}`;
-  if (!window.confirm(`确定删除「${label}」吗？删除简历会同时删除对应的对话记录，且不可撤销。`)) return;
+  const ok = await confirmDialog({
+    title: "删除简历",
+    message: `确定删除「${label}」吗？删除简历会同时删除对应的对话记录，且不可撤销。`,
+    confirmText: "删除",
+  });
+  if (!ok) return;
   try {
     await api.deleteResume(current.id);
     toast(`已删除「${label}」`, "ok");

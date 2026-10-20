@@ -514,6 +514,21 @@
     </div>
   </dialog>
 
+  <!-- ================= 通用确认弹窗（替代浏览器原生 confirm） ================= -->
+  <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <span class="panel-code" id="confirm-code">SYS / CONFIRM</span>
+        <h2 id="confirm-title">请确认</h2>
+      </header>
+      <p class="hint" id="confirm-message"></p>
+      <div class="action-bar">
+        <button class="btn btn-danger" type="button" id="btn-confirm-ok">确定</button>
+        <button class="btn btn-ghost" type="button" id="btn-confirm-cancel">取消</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- ================= 工作区内粘贴简历原文 -> 确认后增补进本对话资料 ================= -->
   <dialog id="resume-paste-dialog" class="dialog" aria-labelledby="rp-title">
     <div class="dialog-form">

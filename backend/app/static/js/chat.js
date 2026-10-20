@@ -1,7 +1,7 @@
 // 02 工作区：对话列表 + 会话面板（消息流 / 生成 / 资料快照 / 雇主问题）
 // 单一状态所有者：本模块持有 chats / currentChat / messages，WebSocket 事件在此收敛。
 import { api } from "./api.js";
-import { $, el, toast, fmtTime, statusLabel } from "./ui.js";
+import { $, el, toast, fmtTime, statusLabel, confirmDialog } from "./ui.js";
 import { openInterview } from "./interview.js";
 
 let chats = new Map();      // id -> chat 摘要（列表接口返回，无 messages）
@@ -200,13 +200,17 @@ function renderBadge() {
   badge.textContent = String(active);
 }
 
-function onListClick(ev) {
+async function onListClick(ev) {
   const item = ev.target.closest(".chat-item");
   if (!item) return;
   const id = Number(item.dataset.id);
   if (id === currentId) return;
   // 切换对话时若 composer 有未保存内容，先确认，避免静默丢弃
-  if (composerDirty() && !window.confirm("当前对话的「职位名称 / 岗位要求」有未保存修改，切换后将丢弃。是否继续？")) return;
+  if (composerDirty() && !(await confirmDialog({
+        title: "切换对话",
+        message: "当前对话的「职位名称 / 岗位要求」有未保存修改，切换后将丢弃。是否继续？",
+        confirmText: "丢弃并切换", danger: false,
+      }))) return;
   openChat(id);
 }
 
@@ -433,7 +437,11 @@ function upsertMessage(msg) {
 async function newChat() {
   // 当前 composer 有未保存内容时，避免静默丢弃
   if (currentId && composerDirty()
-      && !window.confirm("当前对话的「职位名称 / 岗位要求」有未保存修改，新建对话将丢弃。是否继续？")) return;
+      && !(await confirmDialog({
+        title: "新建对话",
+        message: "当前对话的「职位名称 / 岗位要求」有未保存修改，新建对话将丢弃。是否继续？",
+        confirmText: "丢弃并新建", danger: false,
+      }))) return;
   // 新对话从「空」开始：立刻同步清空 composer（含基准值）。
   // 这样在随后的 creatingChat 窗口内，「DOM 非空」即可准确表示「用户已开始输入」，
   // 避免 openChat 回填时把上一个对话的残留内容误判为用户输入，
@@ -647,7 +655,12 @@ async function retryChat() {
 async function deleteChat() {
   if (!currentChat) return;
   const label = currentChat.title || `对话 #${currentChat.id}`;
-  if (!window.confirm(`确定删除「${label}」吗？会同时删除该对话生成的简历，且不可撤销。`)) return;
+  const ok = await confirmDialog({
+    title: "删除对话",
+    message: `确定删除「${label}」吗？会同时删除该对话生成的简历，且不可撤销。`,
+    confirmText: "删除",
+  });
+  if (!ok) return;
   try {
     const removedId = currentChat.id;
     await api.deleteChat(removedId);

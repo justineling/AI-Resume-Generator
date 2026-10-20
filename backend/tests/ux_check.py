@@ -147,8 +147,8 @@ def _new_chat(page) -> None:
     """点「新建」并**确认新对话已真正打开**，再继续操作。
 
     两个坑都要绕开：
-    1. 若当前 composer 有未保存内容，新建会弹 confirm（会被 Playwright 默认“取消”而中止）
-       —— 这里注册一次性 dialog 处理器接受它；
+    1. 若当前 composer 有未保存内容，新建会弹定制确认弹窗（#confirm-dialog）
+       —— 出现时点「丢弃并新建」；
     2. 新建是异步的（POST -> 刷新列表 -> openChat）。若上一个对话的 composer 恰好为空，
        「等输入框为空」会立刻通过、抢在 openChat 之前，随后 fillComposer 覆盖刚填入的内容。
        故改为等 #ws-code 变成新的 CHAT-xxxx（renderHead 在 fillComposer 之后执行）。
@@ -161,6 +161,12 @@ def _new_chat(page) -> None:
     page.on("dialog", _accept)
     try:
         page.click("#btn-new-chat")
+        # 若 composer 有未保存内容会弹定制确认弹窗（#confirm-dialog）——出现就点「丢弃并新建」
+        try:
+            page.wait_for_selector("#confirm-dialog[open]", timeout=1200)
+            page.click("#btn-confirm-ok")
+        except Exception:
+            pass   # 没弹（composer 干净）属正常
         page.wait_for_selector("#ws-work:not([hidden])", timeout=15000)
         page.wait_for_function(
             "(before) => { const c = document.querySelector('#ws-code');"
@@ -483,7 +489,10 @@ def _run(base: str) -> int:
         page.on("dialog", _accept_dialog)
         page.route("**/api/chats", _slow_post_chats)
         try:
-            page.click("#btn-new-chat")          # 若 composer 有未保存内容会弹 confirm，此处接受
+            page.click("#btn-new-chat")          # composer 有未保存内容 -> 弹定制确认弹窗
+            # 定制确认弹窗（#confirm-dialog）替代了浏览器原生 confirm：出现后点「丢弃并新建」
+            page.wait_for_selector("#confirm-dialog[open]", timeout=8000)
+            page.click("#btn-confirm-ok")
             page.wait_for_timeout(150)           # 处于 creatingChat 窗口（POST 仍挂起）
             page.fill("#ws-input", "SLOWTYPED 新建期间输入的内容")
             page.wait_for_timeout(2500)          # 等 createChat + openChat 完成
