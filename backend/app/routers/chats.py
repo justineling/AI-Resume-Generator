@@ -470,15 +470,15 @@ async def chat_interview(
     if not raw_text:
         raise HTTPException(400, "请先填写「岗位要求」再进行问答")
 
-    profile = _profile_from_snapshot(chat.profile_snapshot)
-    if _is_profile_empty(profile):
-        # 空快照 + 未定制 + 全局有资料 -> 自动同步（修复"先建对话后填资料"的时序坑）；
-        # 已定制或全局也为空 -> 维持原有报错。
-        if not ensure_snapshot_usable(session, chat):
-            raise HTTPException(400, "尚未填写资料库，请先在「资料」页保存你的资料")
+    # 未定制的快照始终跟随全局最新（空快照自愈 + 建对话后资料页的新增内容不漏）；
+    # 已定制（profile_dirty）的快照绝不自动改写。无差异时不同步、不追加消息。
+    if not chat.profile_dirty and ensure_snapshot_usable(session, chat):
         session.commit()
         session.refresh(chat)
-        profile = _profile_from_snapshot(chat.profile_snapshot)
+
+    profile = _profile_from_snapshot(chat.profile_snapshot)
+    if _is_profile_empty(profile):
+        raise HTTPException(400, "尚未填写资料库，请先在「资料」页保存你的资料")
 
     analysis = chat.job_analysis or {}
     if not analysis.get("requirements"):

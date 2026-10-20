@@ -1533,6 +1533,31 @@ def main() -> int:
         client.delete(f"/api/chats/{cidE3}?cascade=true")
         client.put("/api/profile", json=PROFILE)   # 恢复全局资料供其它用例使用
 
+        # 场景4：非空快照 + 未定制 + 全局有更新 -> 同步（建对话后资料页新增的内容不漏）
+        # 用户问题：建对话后在 01 写了学历，旧快照没跟上 -> 生成会漏学历。未定制快照应跟随全局。
+        cidE4 = client.post("/api/chats", json={}).json()["id"]   # 快照 = PROFILE（非空、未定制）
+        p4 = dict(PROFILE)
+        p4["education"] = [{"school": "某某大学", "degree": "本科", "major": "计算机", "start": "2016", "end": "2020"}]
+        client.put("/api/profile", json=p4)                        # 资料页新增学历
+        client.post(f"/api/chats/{cidE4}/messages", json={"kind": "jd", "content": JOB})
+        r = client.post(f"/api/chats/{cidE4}/interview")
+        d4 = client.get(f"/api/chats/{cidE4}").json()
+        check("非空快照+未定制+全局更新 -> interview 200", r.status_code == 200, r.status_code)
+        check("快照已同步最新资料（含新增学历）",
+              any(e.get("school") == "某某大学" for e in (d4["profile_snapshot"] or {}).get("education") or []),
+              (d4["profile_snapshot"] or {}).get("education"))
+        check("追加了一条同步消息", _sync_msgs(cidE4) == 1, _sync_msgs(cidE4))
+        client.delete(f"/api/chats/{cidE4}?cascade=true")
+
+        # 场景5：未定制 + 全局无变化 -> 不重复同步（消息幂等）
+        cidE5 = client.post("/api/chats", json={}).json()["id"]   # 快照 = 当前全局，无差异
+        client.post(f"/api/chats/{cidE5}/messages", json={"kind": "jd", "content": JOB})
+        r = client.post(f"/api/chats/{cidE5}/interview")
+        check("无差异对话 interview 200", r.status_code == 200, r.status_code)
+        check("无差异不追加同步消息", _sync_msgs(cidE5) == 0, _sync_msgs(cidE5))
+        client.delete(f"/api/chats/{cidE5}?cascade=true")
+        client.put("/api/profile", json=PROFILE)   # 恢复全局资料供其它用例使用
+
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:
         print("存在失败用例 ❌")
