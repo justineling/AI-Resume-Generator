@@ -80,6 +80,22 @@ const SCALARS = {
 
 let state = { avatar: "" };
 
+// 与后端 pipeline._is_profile_empty 同款判定：无姓名且经历/技能/教育全空。
+// 字段清单统一在这里维护，调用方（如 app.js 的启动视图选择）不要自行复制。
+export function isProfileEmpty(p) {
+  const profile = p || {};
+  if (String(profile.name || "").trim()) return false;
+  return !(profile.experiences || []).length
+    && !(profile.skills || []).length
+    && !(profile.education || []).length;
+}
+
+// 启动时已载入的全局资料（initProfile 完成后有效），供启动视图判定复用，
+// 避免为了判空再多打一次 GET /api/profile。
+export function currentProfile() {
+  return state;
+}
+
 export async function initProfile() {
   // 绑定添加按钮
   document.querySelectorAll("[data-add]").forEach((btn) => {
@@ -329,7 +345,7 @@ async function saveProfile() {
     const saved = await api.saveProfile(payload);
     state = { ...state, ...saved };
     setState(`已保存 · ${fmtTime(saved.updated_at)}`);
-    toast("资料已保存", "ok");
+    toast("资料已保存，可去 02 生成简历", "ok");
   } catch (err) {
     toast(`保存失败：${err.message}`, "err");
   } finally {

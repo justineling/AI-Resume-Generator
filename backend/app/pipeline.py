@@ -22,7 +22,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from . import mock, prompts
 from .db import session_scope
@@ -103,6 +103,45 @@ def _is_profile_empty(profile: dict[str, Any]) -> bool:
     return not any(profile.get(k) for k in ("experiences", "skills", "education"))
 
 
+# 空快照自动同步全局资料时，追加到对话里的说明消息文案
+SNAPSHOT_SYNC_NOTICE = "检测到本对话资料为空，已自动采用最新的资料库内容。"
+
+
+def ensure_snapshot_usable(session: Session, chat: Chat) -> bool:
+    """生成前检查点：空快照 + 未定制 + 全局有资料时，自动同步全局资料进快照。
+
+    修复「先建对话（快照拷贝到当时的空资料）→ 再去资料页填写 → 回来生成报
+    『尚未填写资料库』」的新用户时序坑；等价于一次自动 ``profile/reset``，
+    已存在的老数据同样可自愈。interview 端点与 :func:`run_chat` 共用本逻辑。
+
+    三个条件都满足才同步：
+    1. 快照还原出的 profile 为空（没有素材可生成）——由调用方先判定；
+    2. ``profile_dirty == False``（用户没有在对话内定制过快照）。定制过的
+       快照是"冻结的工作上下文"，静默覆盖会毁掉定制，绝不自动改写；
+    3. 全局资料非空（确实有内容可同步）。
+
+    成功同步时把快照与一条 notice 消息写入 session 但**不 commit**——由调用方
+    负责（请求路径自行 commit；pipeline 走 ``session_scope`` 退出时 commit）。
+    返回 True 表示同步完成、快照已可用；False 则维持原有报错路径
+    （含「已定制」与「全局也为空」两种情况）。
+    """
+    if chat.profile_dirty:
+        return False
+    p = session.exec(select(Profile).order_by(Profile.id)).first()  # type: ignore[attr-defined]
+    global_dict = _profile_to_dict(p)
+    if _is_profile_empty(global_dict):
+        return False
+    chat.profile_snapshot = global_dict
+    chat.updated_at = datetime.now()
+    session.add(chat)
+    session.add(ChatMessage(
+        chat_id=chat.id, role="assistant", kind="notice",
+        content=SNAPSHOT_SYNC_NOTICE, meta={"type": "snapshot_sync"},
+    ))
+    session.flush()
+    return True
+
+
 def load_profile() -> dict[str, Any]:
     """读取全局资料库（用于新建 chat 时做快照）。"""
     with session_scope() as session:
@@ -136,8 +175,9 @@ async def run_chat(chat_id: int, should_cancel: Callable[[], bool] | None = None
         if truncated:
             raw_text = raw_text[:MAX_RAW_TEXT]
         profile = _profile_from_snapshot(chat.profile_snapshot)
-        if _is_profile_empty(profile):
+        if _is_profile_empty(profile) and not ensure_snapshot_usable(session, chat):
             raise RuntimeError(EMPTY_PROFILE_MSG)
+        profile = _profile_from_snapshot(chat.profile_snapshot)
         client = build_client(session)
 
     # 2) 岗位解析（分节 + requirements + employer_questions）

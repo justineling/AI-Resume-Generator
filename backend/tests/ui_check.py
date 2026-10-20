@@ -51,11 +51,13 @@ def _run(base: str, on_exit=None) -> int:
         page.on("pageerror", lambda e: errors.append(f"[pageerror] {e}"))
 
         page.goto(base, wait_until="load")
-        page.wait_for_selector("#chat-list", timeout=15000)
+        # 资料为空时默认进入「01 资料页」（引导先填资料）；等待导航初始化完成即可，
+        # 下方第一步本就是切到 01 资料视图填写
+        page.wait_for_selector(".rail-item.is-active", timeout=15000)
         page.wait_for_timeout(800)
 
         # ---------- 01 资料库 ----------
-        # 默认页是「工作区」，资料视图默认隐藏，需先切到「01 资料」再填写
+        # 空库默认就在「01 资料」；若资料已存在则默认在工作区，切到「01 资料」再填写
         page.click('.rail-item[data-view="profile"]')
         page.wait_for_timeout(400)
         page.screenshot(path=str(OUT / "01-profile.png"))

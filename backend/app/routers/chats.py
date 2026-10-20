@@ -453,7 +453,12 @@ async def chat_interview(
     岗位要求若尚未解析，会先解析一次（不改变 chat 状态）。
     """
     from ..interview import generate_questions
-    from ..pipeline import _is_profile_empty, _normalize_analysis, _profile_from_snapshot
+    from ..pipeline import (
+        _is_profile_empty,
+        _normalize_analysis,
+        _profile_from_snapshot,
+        ensure_snapshot_usable,
+    )
     from .. import mock, prompts
     from ..llm import LLMError
 
@@ -467,7 +472,13 @@ async def chat_interview(
 
     profile = _profile_from_snapshot(chat.profile_snapshot)
     if _is_profile_empty(profile):
-        raise HTTPException(400, "尚未填写资料库，请先在「资料」页保存你的资料")
+        # 空快照 + 未定制 + 全局有资料 -> 自动同步（修复"先建对话后填资料"的时序坑）；
+        # 已定制或全局也为空 -> 维持原有报错。
+        if not ensure_snapshot_usable(session, chat):
+            raise HTTPException(400, "尚未填写资料库，请先在「资料」页保存你的资料")
+        session.commit()
+        session.refresh(chat)
+        profile = _profile_from_snapshot(chat.profile_snapshot)
 
     analysis = chat.job_analysis or {}
     if not analysis.get("requirements"):

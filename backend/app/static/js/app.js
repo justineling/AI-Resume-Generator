@@ -1,7 +1,7 @@
 // 应用入口：视图路由、事件流、设置弹窗
 import { api, connectEvents } from "./api.js";
 import { $, $$, el, toast } from "./ui.js";
-import { initProfile } from "./profile.js";
+import { initProfile, isProfileEmpty, currentProfile } from "./profile.js";
 import { initChat, refreshChats, applyChatEvent } from "./chat.js";
 import { initResume, refreshResumes, openResume } from "./resume.js";
 
@@ -631,6 +631,9 @@ async function boot() {
 
   // 模块初始化
   await initProfile();
+  // 新用户资料为空 -> 默认进入 01 资料页（判定与后端 _is_profile_empty 一致），
+  // 引导先填资料；非空则维持 index.html 默认的工作区视图（02）
+  if (isProfileEmpty(currentProfile())) switchView("profile");
   initChat({ openResume: (rid) => openResume(rid), switchView });
   initResume(switchView);
 

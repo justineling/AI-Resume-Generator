@@ -1467,6 +1467,72 @@ def main() -> int:
         for _cid in (cidA, cidB, cidC):
             client.delete(f"/api/chats/{_cid}?cascade=true")
 
+        # ---------------- F5 空快照自动同步全局资料（02→01→02 时序坑修复） ----------------
+        # 场景：新用户先建对话（快照拷贝到当时的空全局资料），再去「资料」页填写，
+        # 回来生成不应再报「尚未填写资料库」。生成前检查点应自动同步全局资料。
+        print("\n[F5] 空快照自动同步全局资料（生成前检查点）")
+        from app.pipeline import ensure_snapshot_usable  # noqa: E402
+
+        check("ensure_snapshot_usable 可导入", callable(ensure_snapshot_usable))
+
+        def _wipe_global_profile() -> None:
+            with session_scope() as session:
+                for p in session.exec(select(Profile)).all():
+                    session.delete(p)
+
+        def _sync_msgs(cid: int) -> int:
+            detail = client.get(f"/api/chats/{cid}").json()
+            return sum(
+                1 for m in detail.get("messages") or []
+                if m.get("kind") == "notice" and (m.get("meta") or {}).get("type") == "snapshot_sync"
+            )
+
+        # 场景1：空快照 + 未定制 + 全局有资料 -> interview 200 且快照自动同步
+        _wipe_global_profile()
+        cidE1 = client.post("/api/chats", json={}).json()["id"]
+        check("准备：建对话时全局为空 -> 快照 name 为空",
+              not (client.get(f"/api/chats/{cidE1}").json()["profile_snapshot"] or {}).get("name"))
+        client.put("/api/profile", json=PROFILE)   # 模拟用户随后在「资料」页保存资料
+        client.post(f"/api/chats/{cidE1}/messages", json={"kind": "jd", "content": JOB})
+        r = client.post(f"/api/chats/{cidE1}/interview")
+        check("空快照+未定制+全局有资料 -> interview 200", r.status_code == 200, r.status_code)
+        d1 = client.get(f"/api/chats/{cidE1}").json()
+        check("快照已自动同步全局（name 有值）", d1["profile_snapshot"].get("name") == PROFILE["name"],
+              d1["profile_snapshot"].get("name"))
+        check("同步未标记定制（profile_dirty=False）", d1["profile_dirty"] is False, d1["profile_dirty"])
+        check("追加了一条 snapshot_sync 说明消息", _sync_msgs(cidE1) == 1, _sync_msgs(cidE1))
+        r = client.post(f"/api/chats/{cidE1}/interview")
+        check("再次 interview 仍 200 且不重复追加消息",
+              r.status_code == 200 and _sync_msgs(cidE1) == 1, _sync_msgs(cidE1))
+        client.delete(f"/api/chats/{cidE1}?cascade=true")
+
+        # 场景2：空快照 + 已定制 + 全局有资料 -> 仍 400（定制快照绝不被静默覆盖）
+        _wipe_global_profile()
+        cidE2 = client.post("/api/chats", json={}).json()["id"]
+        client.put(f"/api/chats/{cidE2}/profile", json={})   # 定制为全空快照 -> dirty=True
+        client.put("/api/profile", json=PROFILE)
+        client.post(f"/api/chats/{cidE2}/messages", json={"kind": "jd", "content": JOB})
+        r = client.post(f"/api/chats/{cidE2}/interview")
+        check("空快照+已定制 -> 仍 400（不被自动覆盖）", r.status_code == 400, r.status_code)
+        d2 = client.get(f"/api/chats/{cidE2}").json()
+        check("定制快照保留（name 仍空 + dirty=True）",
+              not (d2["profile_snapshot"] or {}).get("name") and d2["profile_dirty"] is True,
+              ((d2["profile_snapshot"] or {}).get("name"), d2["profile_dirty"]))
+        check("未追加同步消息", _sync_msgs(cidE2) == 0, _sync_msgs(cidE2))
+        client.delete(f"/api/chats/{cidE2}?cascade=true")
+
+        # 场景3：空快照 + 全局也空 -> 400 文案不变
+        _wipe_global_profile()
+        cidE3 = client.post("/api/chats", json={}).json()["id"]
+        client.post(f"/api/chats/{cidE3}/messages", json={"kind": "jd", "content": JOB})
+        r = client.post(f"/api/chats/{cidE3}/interview")
+        check("空快照+全局也空 -> 400", r.status_code == 400, r.status_code)
+        check("400 文案不变（含「尚未填写资料库」）",
+              "尚未填写资料库" in r.json().get("detail", ""), r.json().get("detail"))
+        check("未追加同步消息", _sync_msgs(cidE3) == 0, _sync_msgs(cidE3))
+        client.delete(f"/api/chats/{cidE3}?cascade=true")
+        client.put("/api/profile", json=PROFILE)   # 恢复全局资料供其它用例使用
+
     print(f"\n回归结果：{_PASS} 通过 / {_FAIL} 失败")
     if _FAIL:
         print("存在失败用例 ❌")
